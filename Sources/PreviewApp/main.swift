@@ -31,6 +31,17 @@ final class Harness: NSObject, NSApplicationDelegate, NSWindowDelegate {
         saver.startAnimation()
         NSApp.activate(ignoringOtherApps: true)
 
+        // Easy to stare at the procedural stand-in for a while wondering why the
+        // photographs look nothing like photographs.
+        let library = ImageLibrary.urls()
+        if library.isEmpty {
+            print("No photographs in the library, so this is the procedural stand-in.")
+            print("Press c to add some, or drop files into:")
+            print("  " + ImageLibrary.folder.path)
+        } else {
+            print("\(library.count) photograph(s) in \(ImageLibrary.folder.path)")
+        }
+
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handle(event) == true ? nil : event
         }
