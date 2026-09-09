@@ -39,6 +39,13 @@ final class Canvas {
     private let coverW: Int
     private let coverH: Int
     private var coverage: [UInt16]
+    /// Centres of the least-painted cells, refreshed alongside the coverage.
+    /// Sampling random candidates and keeping the worst finds broad thin areas
+    /// but almost never lands inside a hole a few cells across — and the holes
+    /// are precisely what is left at the end, because they sit on the sinks and
+    /// centres of the flow where no streamline goes.
+    private(set) var holeX: [Float] = []
+    private(set) var holeY: [Float] = []
 
     private let bloomW: Int
     private let bloomH: Int
@@ -308,6 +315,29 @@ final class Canvas {
         let cx = min(max(Int(x) / 8, 0), coverW - 1)
         let cy = min(max(Int(y) / 8, 0), coverH - 1)
         return Float(coverage[cy * coverW + cx]) / 65535
+    }
+
+    /// Rebuild the list of under-painted cells. Kept to a bounded size by
+    /// tightening the threshold rather than by truncating, so the list stays
+    /// spread over the frame instead of clustering in whichever region was
+    /// scanned first.
+    private func rebuildHoles() {
+        holeX.removeAll(keepingCapacity: true)
+        holeY.removeAll(keepingCapacity: true)
+        var threshold: Float = 0.62
+        for _ in 0..<3 {
+            holeX.removeAll(keepingCapacity: true)
+            holeY.removeAll(keepingCapacity: true)
+            let cut = UInt16(threshold * 65535)
+            for cy in 0..<coverH {
+                for cx in 0..<coverW where coverage[cy * coverW + cx] < cut {
+                    holeX.append(Float(cx * 8 + 4))
+                    holeY.append(Float(cy * 8 + 4))
+                }
+            }
+            if holeX.count <= 900 { break }
+            threshold *= 0.6
+        }
     }
 
     func meanCoverage() -> Float {

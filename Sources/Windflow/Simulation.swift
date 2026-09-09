@@ -106,16 +106,22 @@ final class Simulation {
              nextFloat() * (Float(canvas.height) + canvas.marginY * 2) - canvas.marginY)
         }
         var (x, y) = candidate()
-        // Only some spawns are aimed, and from a small pool. Aiming every one at
-        // the single worst cell funnels tracer after tracer down the same
-        // streamline, which burns one hard bright curve into the frame instead
-        // of filling the area.
-        if biasToUncovered && nextFloat() < 0.65 {
-            var worst = canvas.coverageAt(x: x, y: y)
-            for _ in 0..<3 {
-                let (cx, cy) = candidate()
-                let cover = canvas.coverageAt(x: cx, y: cy)
-                if cover < worst { worst = cover; x = cx; y = cy }
+        if biasToUncovered {
+            let roll = nextFloat()
+            if roll < 0.45 && !canvas.holeX.isEmpty {
+                // Straight into a known hole, jittered within its cell so the
+                // tracers that land there do not all trace one streamline.
+                let k = min(Int(nextFloat() * Float(canvas.holeX.count)),
+                            canvas.holeX.count - 1)
+                x = canvas.holeX[k] + (nextFloat() - 0.5) * 9
+                y = canvas.holeY[k] + (nextFloat() - 0.5) * 9
+            } else if roll < 0.80 {
+                var worst = canvas.coverageAt(x: x, y: y)
+                for _ in 0..<3 {
+                    let (cx, cy) = candidate()
+                    let cover = canvas.coverageAt(x: cx, y: cy)
+                    if cover < worst { worst = cover; x = cx; y = cy }
+                }
             }
         }
         t.x = x; t.y = y
@@ -183,7 +189,7 @@ final class Simulation {
         let glowPerStep = 0.055 * tuning.exposure / max(0.35, tuning.trail)
         let glowScale = 1 - 0.62 * progress
         let crossSpeed = baseSpeed * 0.20
-        let stallDistanceSquared = powf(baseSpeed * 0.35 * 0.22, 2)
+        let stallDistanceSquared = powf(baseSpeed * 0.6 * 0.34, 2)
         // Distance over which the brush picks up the colour it is passing over.
         // Long at the start — strokes drag their hue across boundaries and the
         // frame is abstract — tightening as the picture builds until the paint
@@ -205,7 +211,7 @@ final class Simulation {
             }
 
             p.checkClock += dt
-            if p.checkClock > 0.35 {
+            if p.checkClock > 0.6 {
                 let moved = (p.x - p.checkX) * (p.x - p.checkX)
                     + (p.y - p.checkY) * (p.y - p.checkY)
                 if moved < stallDistanceSquared {
@@ -237,7 +243,7 @@ final class Simulation {
                 let (mfx, mfy) = canvas.fieldCoordinate(x: mx, y: my, cols: cols, rows: rows)
                 let (ex, ey, _) = field.flow(atX: mfx, y: mfy, time: time, swirl: swirl, seed: seed)
 
-                let cross = p.drift * crossSpeed * sub * (1 - 0.7 * c)
+                let cross = p.drift * crossSpeed * sub * (1 - 0.45 * c)
                 let stepX = ex * v * sub - ey * cross
                 let stepY = ey * v * sub + ex * cross
                 p.x += stepX
@@ -352,8 +358,8 @@ extension Simulation {
         // resolving it finer only gives the tracers noise to jitter against. It
         // shares the canvas's aspect ratio, so it covers exactly the same
         // overscanned region as the colour source.
-        let cols = max(48, canvas.width / 4)
-        let rows = max(27, canvas.height / 4)
+        let cols = max(64, canvas.width / 3)
+        let rows = max(36, canvas.height / 3)
         let field = FlowField(image: image, cols: cols, rows: rows, aspect: 1,
                               seed: seed, drift: settings.drift)
 
