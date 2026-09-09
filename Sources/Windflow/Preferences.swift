@@ -21,6 +21,8 @@ final class Preferences {
             Key.drift: 0.25,
             Key.saturation: 1.10,
             Key.bloom: 0.30,
+            Key.relief: 0.85,
+            Key.regions: 42.0,
             Key.secondsPerImage: 75.0,
             Key.shuffle: true,
         ])
@@ -35,6 +37,8 @@ final class Preferences {
         static let drift = "drift"
         static let saturation = "saturation"
         static let bloom = "bloom"
+        static let relief = "relief"
+        static let regions = "regions"
         static let secondsPerImage = "secondsPerImage"
         static let shuffle = "shuffle"
     }
@@ -55,6 +59,10 @@ final class Preferences {
     var saturation: Double { get { store.double(forKey: Key.saturation) } set { set(Key.saturation, newValue) } }
     /// Halo around the brightest lines.
     var bloom: Double { get { store.double(forKey: Key.bloom) } set { set(Key.bloom, newValue) } }
+    /// How strongly the light rakes across the thickness of the paint.
+    var relief: Double { get { store.double(forKey: Key.relief) } set { set(Key.relief, newValue) } }
+    /// Roughly how many separate passages the picture is divided into.
+    var regions: Double { get { store.double(forKey: Key.regions) } set { set(Key.regions, newValue) } }
     var secondsPerImage: Double { get { store.double(forKey: Key.secondsPerImage) } set { set(Key.secondsPerImage, newValue) } }
     var shuffle: Bool { get { store.bool(forKey: Key.shuffle) } set { set(Key.shuffle, newValue) } }
 

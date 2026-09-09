@@ -55,26 +55,50 @@ sweeps the plane. Tracers that stall in a sink of the field are detected and
 recycled, and new ones start at the worst-covered point of several candidates so
 the flow's shadow zones still fill in.
 
-**The paint.** Each tracer carries a brush loaded with colour taken from the
-picture — but the colour *lags*, taking around a dozen pixels of travel to catch
-up. A stroke therefore carries the hue it started with a little way across a
-boundary before turning into the new one. That lag is the whole trick: it is why
-the result reads as brushwork rather than as the photograph with lines drawn over
-it, and why a plain blue sky comes out as a dozen different blues. Dabs blend
-toward the stroke colour rather than adding to it, so overlapping strokes behave
-like paint instead of blowing out to white, and the accumulated field converges on
-the picture. Per-stroke brush width and tone vary, which is what leaves visible
-texture at convergence instead of a smooth photograph.
+**The passages.** The picture is first divided into regions — SLIC, k-means in a
+joint colour-and-position space, run on the coarse field. A painter does not drag
+one stroke from the water up into the sunlit silt; they work a passage at a time,
+and the meeting of two passages is what makes an edge read. Each region gets its
+own prevailing direction, taken from its own summed structure tensor, and its own
+seeded turbulence — so different shapes in the frame carry visibly different line
+patterns. A stroke belongs to one passage, keeps its full load right up to the
+seam and a little way over it, then stops. The separation comes from where strokes
+*end*, never from withholding paint at the join; withholding it draws a dark
+outline around every shape. A minority of strokes are marked as crossing and run
+much further over, and that overlap is what keeps the regions from reading as
+cut-outs.
 
-A separate additive layer holds the live light at each stroke's head, faded every
-frame and capped per channel a little above the stroke's own colour — uncapped,
-every place where several strokes share a path (a strong edge, which is exactly
-where they gather) clips to white and reads as a hard drawn line.
+**The scale.** Brushes come in three sizes, and each reads a different level of a
+source pyramid: a broad brush samples a blurred level, so it lays in a mass of
+colour without chasing detail it is too big to describe. The mix starts almost
+entirely broad and shifts to fine as the picture fills. Fine brushes are aimed at
+the cells with the most local contrast — scattering them evenly leaves the
+detailed regions mushy and spends the work on an even sky.
 
-**The edges.** The colour source and the flow field both cover a region 11%
-larger than the frame in each direction, and tracers live in that larger space.
-Lines blow in and out from off-screen rather than dying against a border, and the
-visible frame is a slight crop into the photograph.
+**The paint.** Each stroke carries a brush loaded from the picture, and the colour
+*lags* — long at the start, so the opening is abstract; short by the end, so the
+finish is faithful. It is also drawn slightly toward its passage's mean colour,
+the way a painter mixes from a limited palette for one passage, and pushed along
+the warm/cool axis by a per-stroke amount at constant luminance. That is broken
+colour: neighbouring strokes mix in the eye instead of averaging into a flat wash.
+Dabs blend toward the stroke colour rather than adding, so overlapping strokes
+behave like paint instead of blowing out. A stroke is laid as a row of bristles
+across the flow, each carrying slightly more or less paint, which is most of what
+makes it read as a brush mark rather than a smooth ribbon.
+
+**The surface.** Paint has thickness. Every dab raises a height field, so the
+canvas carries the ridge of each stroke over a faint weave, and the frame is lit
+by raking a directional light across that relief. This is the difference between a
+painting and a filtered photograph: the brightness on screen is a property *of the
+paint* rather than a glow laid over the top of it. The relief decays slowly, so
+the light always follows the most recent brushwork and the finished picture keeps
+moving. A small additive layer still marks the live stroke heads, but it fades out
+as the paint arrives.
+
+**The edges.** The colour source and the flow field both cover a region 11% larger
+than the frame in each direction, and tracers live in that larger space. Lines
+blow in and out from off-screen rather than dying against a border, and the visible
+frame is a slight crop into the photograph.
 
 ## Development
 

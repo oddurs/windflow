@@ -16,8 +16,17 @@ final class FlowField {
     let rows: Int
 
     /// Perceptual luminance of the photograph, 0...1. Colour lives on the
-    /// canvas at full resolution; the field only needs tone to find structure.
+    /// canvas at full resolution; the field keeps a coarse copy only to divide
+    /// the picture into regions.
     private(set) var luma: [Float]
+    private var red: [Float]
+    private var green: [Float]
+    private var blue: [Float]
+
+    /// The picture divided into painted passages. Strokes belong to one, and
+    /// each has its own prevailing direction, so different shapes in the frame
+    /// carry visibly different line patterns.
+    private(set) var regions: Segmentation!
     /// Oriented unit flow direction per cell, in **screen-proportional** space:
     /// a character cell is roughly twice as tall as it is wide, so a vector that
     /// is unit-length in grid indices is not unit-length on the display. Every
@@ -33,18 +42,24 @@ final class FlowField {
     let aspect: Float
 
     init(image: CGImage, cols: Int, rows: Int, aspect: Float,
-         seed: UInt32, drift: Float) {
+         seed: UInt32, drift: Float, regionCount: Int) {
         self.cols = max(cols, 2)
         self.rows = max(rows, 2)
         self.aspect = max(aspect, 0.05)
         let n = self.cols * self.rows
 
         luma = [Float](repeating: 0, count: n)
+        red = [Float](repeating: 0, count: n)
+        green = [Float](repeating: 0, count: n)
+        blue = [Float](repeating: 0, count: n)
         dirX = [Float](repeating: 1, count: n)
         dirY = [Float](repeating: 0, count: n)
         coherence = [Float](repeating: 0, count: n)
 
         sample(image: image)
+        regions = Segmentation(r: red, g: green, b: blue,
+                               cols: self.cols, rows: self.rows,
+                               targetRegions: regionCount, compactness: 4.6)
         buildFlow(seed: seed, drift: drift)
     }
 
@@ -84,9 +99,11 @@ final class FlowField {
             let dst = y * cols
             for x in 0..<cols {
                 let o = src + x * 4
-                luma[dst + x] = (0.2126 * Float(raw[o])
-                                 + 0.7152 * Float(raw[o + 1])
-                                 + 0.0722 * Float(raw[o + 2])) * inv
+                let r = Float(raw[o]) * inv
+                let g = Float(raw[o + 1]) * inv
+                let b = Float(raw[o + 2]) * inv
+                red[dst + x] = r; green[dst + x] = g; blue[dst + x] = b
+                luma[dst + x] = 0.2126 * r + 0.7152 * g + 0.0722 * b
             }
         }
     }
@@ -131,7 +148,34 @@ final class FlowField {
         let reference = percentile(energy, 0.90)
         let energyScale = reference > 1e-6 ? 1 / reference : 0
 
-        // A slowly turning global wind, unique per image, used both to orient the
+        // Each region's prevailing direction: the dominant orientation of its
+        // own structure, from its own summed tensor. A stroke crossing an even
+        // passage then still travels the way that passage runs.
+        let regionCount = regions.count
+        var accE = [Float](repeating: 0, count: regionCount)
+        var accF = [Float](repeating: 0, count: regionCount)
+        var accG = [Float](repeating: 0, count: regionCount)
+        for i in 0..<n {
+            let l = Int(regions.labels[i])
+            accE[l] += tE[i]; accF[l] += tF[i]; accG[l] += tG[i]
+        }
+        var regionX = [Float](repeating: 1, count: regionCount)
+        var regionY = [Float](repeating: 0, count: regionCount)
+        var regionSwirl = [Float](repeating: 1, count: regionCount)
+        for l in 0..<regionCount {
+            let e = accE[l], f = accF[l], g = accG[l]
+            let d = ((e - g) * (e - g) + 4 * f * f).squareRoot()
+            var tx = -(g - e + d), ty = 2 * f
+            let len = (tx * tx + ty * ty).squareRoot()
+            if len < 1e-9 { tx = 1; ty = 0 } else { tx /= len; ty /= len }
+            // Break the director's sign per region so neighbouring passages do
+            // not all sweep the same way.
+            if Noise.hash(Int32(l), 11, 3, seed) < 0.5 { tx = -tx; ty = -ty }
+            regionX[l] = tx; regionY[l] = ty
+            regionSwirl[l] = 0.65 + Noise.hash(Int32(l), 29, 7, seed) * 0.9
+        }
+
+        // A slowly turning wind, seeded per region, used both to orient the
         // (sign-ambiguous) tangents and to fill in the featureless areas.
         let windScale: Float = 1.05 / Float(cols)
 
@@ -152,8 +196,17 @@ final class FlowField {
                 let strength = smoothstep(0.05, 0.45, energy[i] * energyScale)
                 let coh = min(max(anisotropy * strength, 0), 1)
 
-                let (wx, wy) = Noise.curl(Float(x), Float(y) * aspect,
-                                          scale: windScale, seed: seed)
+                let label = Int(regions.labels[i])
+                let (cxw, cyw) = Noise.curl(Float(x), Float(y) * aspect,
+                                            scale: windScale * regionSwirl[label],
+                                            seed: seed &+ UInt32(label) &* 7919)
+                // Half the region's own prevailing direction, half its own
+                // turbulence: enough shared direction to read as one passage,
+                // enough turbulence not to look combed.
+                var wx = cxw + (regionX[label] - cxw) * 0.5
+                var wy = cyw + (regionY[label] - cyw) * 0.5
+                let wlen = (wx * wx + wy * wy).squareRoot()
+                if wlen < 1e-9 { wx = 1; wy = 0 } else { wx /= wlen; wy /= wlen }
 
                 // The tangent is a director, not a vector: flip it to agree with
                 // the wind so neighbouring streaks travel the same way.
@@ -180,6 +233,21 @@ final class FlowField {
             if l < 1e-9 { dirX[i] = 1; dirY[i] = 0 } else { dirX[i] /= l; dirY[i] /= l }
         }
         boxBlur(&coherence, radius: 2, passes: 1)
+    }
+
+    /// Region index at a field coordinate.
+    @inline(__always)
+    func label(atX x: Float, y: Float) -> Int32 {
+        let cx = min(max(Int(x), 0), cols - 1)
+        let cy = min(max(Int(y), 0), rows - 1)
+        return regions.labels[cy * cols + cx]
+    }
+
+    /// Mean colour of a region — the local palette a stroke is drawn toward.
+    @inline(__always)
+    func regionColor(_ label: Int32) -> (Float, Float, Float) {
+        let l = min(max(Int(label), 0), regions.count - 1)
+        return (regions.meanR[l], regions.meanG[l], regions.meanB[l])
     }
 
     // MARK: - Sampling helpers

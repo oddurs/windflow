@@ -9,7 +9,7 @@ public final class WindflowView: ScreenSaverView {
     // to reach the window server sixty times a second. Past this budget we
     // render under native and let the layer scale up — the lines are soft and
     // anti-aliased, so the difference is invisible where the power draw is not.
-    private static let pixelBudget: Double = 2_600_000
+    private static let pixelBudget: Double = 2_000_000
 
     private var canvas: Canvas?
     private var simulation: Simulation?
@@ -20,7 +20,7 @@ public final class WindflowView: ScreenSaverView {
     private var playlist: [URL] = []
     private var playlistIndex = 0
     private let loadQueue = DispatchQueue(label: "com.oddurs.Windflow.load", qos: .utility)
-    private var pending: CGImage?
+    private var pending: PreparedImage?
     private var loading = false
 
     private var configController: ConfigSheetController?
@@ -63,7 +63,12 @@ public final class WindflowView: ScreenSaverView {
 
     public override func animateOneFrame() {
         rebuildIfNeeded()
-        guard let canvas, let simulation else { return }
+        guard let canvas else { return }
+        guard let simulation else {
+            // Waiting on the first photograph. Start it the moment it lands.
+            if pending != nil { advanceImage() }
+            return
+        }
 
         let now = CACurrentMediaTime()
         let dt = Float(min(max(now - lastFrameTime, 1.0 / 240.0), 0.05))
@@ -71,8 +76,10 @@ public final class WindflowView: ScreenSaverView {
 
         simulation.step(dt: dt)
         if let image = canvas.present(fade: simulation.fadeFactor(dt: dt),
+                                      reliefKeep: simulation.reliefFactor(dt: dt),
                                       bloomAmount: simulation.tuning.bloom,
-                                      vignetteAmount: 0.12) {
+                                      vignetteAmount: 0.12,
+                                      lighting: simulation.tuning.relief) {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer?.contents = image
@@ -82,7 +89,7 @@ public final class WindflowView: ScreenSaverView {
         if simulation.phase == .dissolving && pending == nil && !loading {
             prefetchNextImage()
         }
-        if simulation.phase == .done {
+        if simulation.phase == .done && pending != nil {
             advanceImage()
         }
     }
@@ -111,9 +118,13 @@ public final class WindflowView: ScreenSaverView {
         canvas = c
         layer?.contentsScale = CGFloat(renderScale)
 
+        // Nothing is painted until the first photograph is prepared. That takes
+        // a moment, and the screen stays black — which is where the piece starts
+        // anyway, so there is nothing to cover up.
+        simulation = nil
         pending = nil
-        let first = nextURL().flatMap { ImageLibrary.load($0) }
-        simulation = makeSimulation(for: c, image: first)
+        loading = false
+        prefetchNextImage()
     }
 
     // MARK: - Playlist
@@ -131,27 +142,27 @@ public final class WindflowView: ScreenSaverView {
         return url
     }
 
-    private func makeSimulation(for canvas: Canvas, image: CGImage?) -> Simulation? {
-        guard let image = image ?? ProceduralImage.make() else { return nil }
-        return Simulation.make(image: image, canvas: canvas,
-                               settings: SimulationSettings(prefs: Preferences.shared),
-                               preview: isPreview)
-    }
-
     /// Decoding a photograph takes long enough to drop frames, so it happens off
     /// the render thread while the current image is still dissolving. Only the
     /// decode is prefetched: the simulation itself writes into the shared canvas
     /// and has to be built on the main thread once the old one is finished with
     /// it.
     private func prefetchNextImage() {
-        guard !loading else { return }
+        guard let canvas, !loading else { return }
         loading = true
         let url = nextURL()
+        let settings = SimulationSettings(prefs: Preferences.shared)
+        let (coverW, coverH) = canvas.coverageSize
+        let w = canvas.width, h = canvas.height
         loadQueue.async { [weak self] in
             let image = url.flatMap { ImageLibrary.load($0) } ?? ProceduralImage.make()
+            let prepared = image.map {
+                PreparedImage.prepare(image: $0, canvasWidth: w, canvasHeight: h,
+                                      coverW: coverW, coverH: coverH, settings: settings)
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.pending = image
+                self.pending = prepared
                 self.loading = false
             }
         }
@@ -161,10 +172,17 @@ public final class WindflowView: ScreenSaverView {
     /// screensaver itself only ever advances on the timer.
     public func advanceImage() {
         guard let canvas else { return }
-        let image = pending ?? nextURL().flatMap { ImageLibrary.load($0) }
-        pending = nil
-        loading = false
-        simulation = makeSimulation(for: canvas, image: image)
+        if let prepared = pending,
+           prepared.canvasWidth == canvas.width, prepared.canvasHeight == canvas.height {
+            pending = nil
+            simulation = Simulation.begin(prepared, canvas: canvas,
+                                          settings: SimulationSettings(prefs: Preferences.shared),
+                                          preview: isPreview)
+        } else {
+            pending = nil
+            simulation = nil
+            prefetchNextImage()
+        }
     }
 
     /// Re-read the preferences and restart the current photograph with them.

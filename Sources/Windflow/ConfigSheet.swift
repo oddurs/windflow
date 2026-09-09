@@ -45,6 +45,12 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
         Row(key: Preferences.Key.bloom, title: "Bloom", range: 0.0...2.0,
             hint: "Halo around the brightest lines",
             format: { String(format: "%.2f", $0) }),
+        Row(key: Preferences.Key.regions, title: "Passages", range: 6.0...140.0,
+            hint: "How many separate areas the picture is broken into; strokes stay inside one",
+            format: { String(format: "%.0f", $0) }),
+        Row(key: Preferences.Key.relief, title: "Impasto", range: 0.0...2.5,
+            hint: "How strongly light rakes across the thickness of the paint",
+            format: { String(format: "%.2f", $0) }),
         Row(key: Preferences.Key.secondsPerImage, title: "Time per image", range: 20.0...400.0,
             hint: "Includes the reveal and the hold before it dissolves",
             format: { String(format: "%.0f s", $0) }),
@@ -204,7 +210,7 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
         let p = Preferences.shared
         p.density = 1.0; p.speed = 1.0; p.trail = 1.0; p.exposure = 1.0
         p.swirl = 0.55; p.drift = 0.25; p.saturation = 1.10
-        p.bloom = 0.30; p.secondsPerImage = 75.0
+        p.bloom = 0.30; p.relief = 1.0; p.regions = 42.0; p.secondsPerImage = 75.0
         window.contentView = nil
         valueLabels.removeAll()
         buildUI()
@@ -300,6 +306,8 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
         case Preferences.Key.drift: return p.drift
         case Preferences.Key.saturation: return p.saturation
         case Preferences.Key.bloom: return p.bloom
+        case Preferences.Key.relief: return p.relief
+        case Preferences.Key.regions: return p.regions
         case Preferences.Key.secondsPerImage: return p.secondsPerImage
         default: return 0
         }
@@ -316,6 +324,8 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
         case Preferences.Key.drift: p.drift = value
         case Preferences.Key.saturation: p.saturation = value
         case Preferences.Key.bloom: p.bloom = value
+        case Preferences.Key.relief: p.relief = value
+        case Preferences.Key.regions: p.regions = value
         case Preferences.Key.secondsPerImage: p.secondsPerImage = value
         default: break
         }

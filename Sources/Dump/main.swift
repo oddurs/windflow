@@ -24,10 +24,16 @@ let image: CGImage = {
     return ProceduralImage.make()!
 }()
 
+let buildClock = CFAbsoluteTimeGetCurrent()
 let canvas = Canvas(width: width, height: height)
 let settings = SimulationSettings(prefs: Preferences.shared)
-let sim = Simulation.make(image: image, canvas: canvas, settings: settings, preview: false)
-print("canvas \(width)x\(height)  field \(sim.field.cols)x\(sim.field.rows)")
+let (coverW, coverH) = canvas.coverageSize
+let prepared = PreparedImage.prepare(image: image, canvasWidth: width, canvasHeight: height,
+                                     coverW: coverW, coverH: coverH, settings: settings)
+let sim = Simulation.begin(prepared, canvas: canvas, settings: settings, preview: false)
+print(String(format: "canvas %dx%d  field %dx%d  regions %d  setup %.0f ms",
+             width, height, sim.field.cols, sim.field.rows, sim.field.regions.count,
+             (CFAbsoluteTimeGetCurrent() - buildClock) * 1000))
 
 let dt: Float = 1.0 / 60.0
 var captureIndex = 0
@@ -43,8 +49,10 @@ while t <= end {
     sim.step(dt: dt)
     let s1 = CFAbsoluteTimeGetCurrent()
     let cg = canvas.present(fade: sim.fadeFactor(dt: dt),
+                            reliefKeep: sim.reliefFactor(dt: dt),
                             bloomAmount: sim.tuning.bloom,
-                            vignetteAmount: 0.12)
+                            vignetteAmount: 0.12,
+                            lighting: sim.tuning.relief)
     let s2 = CFAbsoluteTimeGetCurrent()
     stepTotal += s1 - s0
     presentTotal += s2 - s1
