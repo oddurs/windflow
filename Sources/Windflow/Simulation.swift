@@ -127,7 +127,7 @@ final class Simulation {
         // many fine ones carrying the detail.
         let bw = nextFloat()
         t.brush = 0.15 + bw * bw * 1.7
-        t.tone = 0.78 + nextFloat() * 0.46
+        t.tone = 0.90 + nextFloat() * 0.20
         t.loaded = false
         return t
     }
@@ -143,7 +143,12 @@ final class Simulation {
         advance(dt: dt)
 
         if phase == .dissolving { canvas.fadePaint(exp(-dt / 2.4)) }
-        if frame % 15 == 0 { progress = canvas.paintProgress() }
+        // Coverage is measured off the paint, so it also serves as the progress
+        // signal for the phase changes.
+        if frame % 15 == 0 {
+            canvas.refreshCoverage()
+            progress = canvas.meanCoverage()
+        }
 
         switch phase {
         case .revealing:
@@ -175,11 +180,17 @@ final class Simulation {
         // Brightness is divided by trail length: a longer-lived streak
         // accumulates more passes over the same pixel, so without this the trail
         // slider doubles as an exposure slider.
-        let glowPerStep = 0.065 * tuning.exposure / max(0.35, tuning.trail)
+        let glowPerStep = 0.055 * tuning.exposure / max(0.35, tuning.trail)
+        let glowScale = 1 - 0.62 * progress
         let crossSpeed = baseSpeed * 0.20
         let stallDistanceSquared = powf(baseSpeed * 0.35 * 0.22, 2)
         // Distance over which the brush picks up the colour it is passing over.
-        let pickupPerPixel: Float = 1.0 / 13.0
+        // Long at the start — strokes drag their hue across boundaries and the
+        // frame is abstract — tightening as the picture builds until the paint
+        // tracks the photograph closely. A fixed lag has to pick one or the
+        // other; ramping it gives the whole arc.
+        let resolve = min(elapsed / max(tuning.revealTimeout * 0.75, 1), 1)
+        let pickupPerPixel = 1.0 / (27 - 23 * resolve * resolve)
 
         for i in 0..<tracers.count {
             var p = tracers[i]
@@ -250,28 +261,41 @@ final class Simulation {
 
                 if painting {
                     // Three dabs across the flow give the stroke a width without
-                    // needing a real brush footprint.
+                    // needing a real brush footprint. The field steers strokes
+                    // *along* edges, so a wide brush sits astride one — narrow it
+                    // where the structure is strong, and let the outer dabs take
+                    // most of their colour from where they actually land. Without
+                    // both, every boulder bleeds its dark across the water it
+                    // borders.
                     let nx = -ey, ny = ex
-                    let hw = p.brush
+                    let hw = p.brush * (1 - 0.62 * c)
                     let a = dabAlpha * envelope
                     canvas.paintDab(x: p.x, y: p.y, r: sr, g: sg, b: sb, alpha: a)
                     if hw > 0.35 {
-                        canvas.paintDab(x: p.x + nx * hw, y: p.y + ny * hw,
-                                        r: sr, g: sg, b: sb, alpha: a * 0.6)
-                        canvas.paintDab(x: p.x - nx * hw, y: p.y - ny * hw,
-                                        r: sr, g: sg, b: sb, alpha: a * 0.6)
+                        for side in [hw, -hw] {
+                            let ox = p.x + nx * side, oy = p.y + ny * side
+                            let (lr, lg, lb) = canvas.sourceColor(atX: ox, y: oy)
+                            canvas.paintDab(x: ox, y: oy,
+                                            r: lr * 0.62 + sr * 0.38,
+                                            g: lg * 0.62 + sg * 0.38,
+                                            b: lb * 0.62 + sb * 0.38,
+                                            alpha: a * 0.6)
+                        }
                     }
-                    canvas.markCoverage(x: p.x, y: p.y, amount: a * 1.3)
                 }
 
                 // The live head, in the stroke's own hue lifted toward its bright
                 // version — never toward white, or every stroke on screen ends up
                 // the same colour.
+                // The head light carries the opening, when the frame is dark and
+                // the wind is the whole picture. Once the painting has arrived it
+                // steps back — otherwise it is exactly the "colour laid on top"
+                // that the photograph is not supposed to have.
                 let m = max(sr, max(sg, sb))
                 let lift: Float = m > 0.02 ? min(0.75 / m, 1.9) : 1
                 canvas.addGlow(x: p.x, y: p.y,
                                r: sr * lift, g: sg * lift, b: sb * lift,
-                               intensity: glowPerStep * envelope)
+                               intensity: glowPerStep * envelope * glowScale)
             }
 
             tracers[i] = p

@@ -44,7 +44,7 @@ while t <= end {
     let s1 = CFAbsoluteTimeGetCurrent()
     let cg = canvas.present(fade: sim.fadeFactor(dt: dt),
                             bloomAmount: sim.tuning.bloom,
-                            vignetteAmount: 0.30)
+                            vignetteAmount: 0.12)
     let s2 = CFAbsoluteTimeGetCurrent()
     stepTotal += s1 - s0
     presentTotal += s2 - s1

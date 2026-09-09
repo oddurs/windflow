@@ -146,12 +146,15 @@ final class Canvas {
             g = l + (g - l) * saturation
             b = l + (b - l) * saturation
 
-            // Lift the floor a little. Paint that converges on pure black gives
-            // dead holes in the picture where no stroke is ever visible.
+            // Almost the identity. The paint converges on exactly what this
+            // returns, so every liberty taken here is colour laid on top of the
+            // photograph — which is the one thing this must not look like. All
+            // that is left is a whisper of contrast and a floor to keep pure
+            // black from becoming a hole no stroke can ever show up in.
             @inline(__always) func curve(_ v: Float) -> Float {
                 let c = min(max(v, 0), 1)
                 let s = c * c * (3 - 2 * c)
-                return 0.045 + 0.955 * min(max(c * 0.42 + s * 0.58, 0), 1)
+                return 0.022 + 0.978 * min(max(c * 0.88 + s * 0.12, 0), 1)
             }
 
             source[i] = UInt8(min(curve(r), 1) * 255)
@@ -241,9 +244,9 @@ final class Canvas {
         // colour. Uncapped addition means every place several strokes share a
         // path — a strong edge in the photograph, which is exactly where they
         // gather — clips to white and reads as a hard drawn line.
-        let capR = min(r * 255 * 1.55, 255)
-        let capG = min(g * 255 * 1.55, 255)
-        let capB = min(b * 255 * 1.55, 255)
+        let capR = min(r * 255 * 1.28, 255)
+        let capG = min(g * 255 * 1.28, 255)
+        let capB = min(b * 255 * 1.28, 255)
         glow.withUnsafeMutableBufferPointer { gl in
             @inline(__always) func put(_ o: Int, _ w: Float) {
                 let a = w * intensity
@@ -259,13 +262,45 @@ final class Canvas {
         }
     }
 
-    @inline(__always)
-    func markCoverage(x: Float, y: Float, amount: Float) {
-        let cx = Int(x) / 8, cy = Int(y) / 8
-        if cx < 0 || cy < 0 || cx >= coverW || cy >= coverH { return }
-        let i = cy * coverW + cx
-        let current = Float(coverage[i])
-        coverage[i] = UInt16(min(current + (65535 - current) * min(max(amount, 0), 1), 65535))
+    /// Recompute how far the painting has actually got, cell by cell, by
+    /// comparing the paint against the photograph it is converging on.
+    ///
+    /// This replaced a counter incremented wherever the brush touched. That
+    /// version marked a cell finished after a handful of dabs, while the paint
+    /// underneath needed an order of magnitude more to converge — so new tracers
+    /// stopped being aimed at regions that still looked black, and the frame
+    /// kept permanent unpainted wedges in the low-traffic parts of the flow.
+    func refreshCoverage() {
+        coverage.withUnsafeMutableBufferPointer { cov in
+            paint.withUnsafeBufferPointer { pt in
+                source.withUnsafeBufferPointer { src in
+                    for cy in 0..<coverH {
+                        for cx in 0..<coverW {
+                            var ratio: Float = 0
+                            var taken = 0
+                            for (ox, oy) in [(2, 2), (6, 2), (2, 6), (6, 6)] {
+                                let x = cx * 8 + ox, y = cy * 8 + oy
+                                if x >= width || y >= height { continue }
+                                let o = (y * width + x) * 4
+                                let pl = (0.2126 * Float(pt[o]) + 0.7152 * Float(pt[o + 1])
+                                          + 0.0722 * Float(pt[o + 2])) * (1.0 / 65535)
+                                let sx = min(Int((Float(x) + marginX) * sourceScaleX), width - 1)
+                                let sy = min(Int((Float(y) + marginY) * sourceScaleY), height - 1)
+                                let so = (sy * width + sx) * 4
+                                let sl = (0.2126 * Float(src[so]) + 0.7152 * Float(src[so + 1])
+                                          + 0.0722 * Float(src[so + 2])) * (1.0 / 255)
+                                ratio += min(pl / max(sl, 0.02), 1)
+                                taken += 1
+                            }
+                            if taken > 0 {
+                                cov[cy * coverW + cx] =
+                                    UInt16(min(max(ratio / Float(taken), 0), 1) * 65535)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @inline(__always)
@@ -281,42 +316,14 @@ final class Canvas {
         return sum / Float(coverage.count) / 65535
     }
 
-    /// How far the painting has actually got, measured against the photograph
-    /// rather than against where the brush has been. The coverage grid says a
-    /// cell has been visited; this says the picture has arrived there, which is
-    /// the thing the phase transition actually cares about.
-    func paintProgress() -> Float {
-        var sum: Float = 0
-        var count = 0
-        let step = max(1, (width * height) / 20000)
-        var i = 0
-        while i < width * height {
-            let x = i % width, y = i / width
-            let o = i * 4
-            let pl = (0.2126 * Float(paint[o]) + 0.7152 * Float(paint[o + 1])
-                      + 0.0722 * Float(paint[o + 2])) * (1.0 / 65535)
-            // Map the visible pixel back into the overscanned source.
-            let sx = min(Int((Float(x) + marginX) * sourceScaleX), width - 1)
-            let sy = min(Int((Float(y) + marginY) * sourceScaleY), height - 1)
-            let so = (sy * width + sx) * 4
-            let sl = (0.2126 * Float(source[so]) + 0.7152 * Float(source[so + 1])
-                      + 0.0722 * Float(source[so + 2])) * (1.0 / 255)
-            sum += min(pl / max(sl, 0.02), 1)
-            count += 1
-            i += step
-        }
-        return count > 0 ? sum / Float(count) : 0
-    }
-
     /// Fade the painting back toward black; the wind takes the picture away.
     func fadePaint(_ keep: Float) {
         let k = UInt32(min(max(keep, 0), 1) * 65536)
         paint.withUnsafeMutableBufferPointer { p in
             for i in 0..<p.count { p[i] = UInt16((UInt32(p[i]) &* k) >> 16) }
         }
-        let ck = UInt32(min(max(keep, 0), 1) * 65536)
         coverage.withUnsafeMutableBufferPointer { c in
-            for i in 0..<c.count { c[i] = UInt16((UInt32(c[i]) &* ck) >> 16) }
+            for i in 0..<c.count { c[i] = UInt16((UInt32(c[i]) &* k) >> 16) }
         }
     }
 

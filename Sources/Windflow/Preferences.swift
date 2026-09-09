@@ -19,8 +19,8 @@ final class Preferences {
             Key.exposure: 1.0,
             Key.swirl: 0.55,
             Key.drift: 0.25,
-            Key.saturation: 1.45,
-            Key.bloom: 0.9,
+            Key.saturation: 1.10,
+            Key.bloom: 0.30,
             Key.secondsPerImage: 75.0,
             Key.shuffle: true,
         ])

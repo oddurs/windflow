@@ -203,8 +203,8 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
     @objc private func resetDefaults() {
         let p = Preferences.shared
         p.density = 1.0; p.speed = 1.0; p.trail = 1.0; p.exposure = 1.0
-        p.swirl = 0.55; p.drift = 0.25; p.saturation = 1.45
-        p.bloom = 0.9; p.secondsPerImage = 75.0
+        p.swirl = 0.55; p.drift = 0.25; p.saturation = 1.10
+        p.bloom = 0.30; p.secondsPerImage = 75.0
         window.contentView = nil
         valueLabels.removeAll()
         buildUI()

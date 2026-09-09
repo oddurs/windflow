@@ -72,7 +72,7 @@ public final class WindflowView: ScreenSaverView {
         simulation.step(dt: dt)
         if let image = canvas.present(fade: simulation.fadeFactor(dt: dt),
                                       bloomAmount: simulation.tuning.bloom,
-                                      vignetteAmount: 0.30) {
+                                      vignetteAmount: 0.12) {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer?.contents = image
