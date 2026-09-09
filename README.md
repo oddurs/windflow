@@ -2,12 +2,15 @@
 
 A macOS screensaver that draws your aerial photographs out of moving wind.
 
-Every lit pixel on screen got there because a line of light moved through it.
-Nothing is ever blitted from the source image. The screen starts black; streaks
-appear and begin flowing along the structure of the photograph — the braids of a
-glacial river, the ridges of a dune field, the shear in a cloud deck — and the
-picture slowly accumulates in their wake until it is fully present. Then it
-dissolves back into the wind and the next photograph begins.
+The photograph is never drawn. It exists only as a palette that the wind
+*samples*. The screen starts black; coloured streaks appear and begin flowing
+along the structure of the image — the braids of a glacial river, the ridges of a
+dune field, the shear in a cloud deck — and the picture assembles out of their
+accumulated paint until it is fully present. Then it dissolves back into the wind
+and the next photograph begins.
+
+What you end up looking at is a painting made of weather that happens to converge
+on the photograph. There is no layer of the real image anywhere in the frame.
 
 ## Install
 
@@ -52,25 +55,26 @@ sweeps the plane. Tracers that stall in a sink of the field are detected and
 recycled, and new ones start at the worst-covered point of several candidates so
 the flow's shadow zones still fill in.
 
-**The layers.** Three, composited every frame:
+**The paint.** Each tracer carries a brush loaded with colour taken from the
+picture — but the colour *lags*, taking around a dozen pixels of travel to catch
+up. A stroke therefore carries the hue it started with a little way across a
+boundary before turning into the new one. That lag is the whole trick: it is why
+the result reads as brushwork rather than as the photograph with lines drawn over
+it, and why a plain blue sky comes out as a dozen different blues. Dabs blend
+toward the stroke colour rather than adding to it, so overlapping strokes behave
+like paint instead of blowing out to white, and the accumulated field converges on
+the picture. Per-stroke brush width and tone vary, which is what leaves visible
+texture at convergence instead of a smooth photograph.
 
-| layer | resolution | behaviour |
-|---|---|---|
-| `target` | full | the graded photograph, only ever seen through `reveal` |
-| `reveal` | half | coverage that grows where a line passed; permanent |
-| `glow` | full | additive light from the lines, faded every frame |
+A separate additive layer holds the live light at each stroke's head, faded every
+frame and capped per channel a little above the stroke's own colour — uncapped,
+every place where several strokes share a path (a strong edge, which is exactly
+where they gather) clips to white and reads as a hard drawn line.
 
-The fade on `glow` is what turns a moving point into a streak. `reveal` is
-deposited on a wider brush than the light, so the stroke stays hairline sharp
-while the picture behind it fills in smoothly, and it is gently blurred late in
-the cycle so the finish is not combed. Bloom is built from `glow` at quarter
-resolution and added back.
-
-**Colour.** Lines are drawn in the photograph's own hue held at a high, even
-value — sampling the image directly would make them invisible over exactly the
-dark regions where the interesting structure lives. The scale is applied to all
-three channels at once, so hue and saturation are untouched and only brightness
-is raised.
+**The edges.** The colour source and the flow field both cover a region 11%
+larger than the frame in each direction, and tracers live in that larger space.
+Lines blow in and out from off-screen rather than dying against a border, and the
+visible frame is a slight crop into the photograph.
 
 ## Development
 
@@ -84,8 +88,8 @@ build/windflow-dump out/ photo.jpg 1600 900 4,20,45,75   # headless PNG frames
 
 In the preview harness: <kbd>space</kbd> next photograph, <kbd>f</kbd> full
 screen, <kbd>c</kbd> configuration sheet, <kbd>r</kbd> restart, <kbd>q</kbd> quit.
-`WINDFLOW_MASK=1` on the dumper also writes the coverage mask and a coverage
-histogram, which is how you diagnose a photo the wind fails to cover.
+`WINDFLOW_MASK=1` on the dumper also writes the coverage grid and a histogram,
+which is how you diagnose a photo the wind fails to cover.
 
 Built with `swiftc` directly — no Xcode project. Only the Command Line Tools are
 required. The renderer is entirely CPU-side, which avoids the Metal toolchain

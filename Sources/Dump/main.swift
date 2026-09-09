@@ -56,7 +56,7 @@ while t <= end {
             print("wrote \(name)  phase=\(sim.phase)")
         }
         if ProcessInfo.processInfo.environment["WINDFLOW_MASK"] != nil {
-            if let mask = canvas.debugRevealImage(),
+            if let mask = canvas.debugCoverageImage(),
                let png = NSBitmapImageRep(cgImage: mask).representation(using: .png, properties: [:]) {
                 let name = String(format: "mask-t%05.1fs.png", captureAt[captureIndex])
                 try? png.write(to: outDir.appendingPathComponent(name))

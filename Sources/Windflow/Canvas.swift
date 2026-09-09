@@ -2,44 +2,52 @@ import Foundation
 import AppKit
 import CoreGraphics
 
-/// The drawing surface. Three layers, all at render resolution or a fraction of
-/// it:
+/// The drawing surface.
 ///
-///  * `target` — the graded photograph. Never drawn directly; it is only ever
-///    revealed through `reveal`.
-///  * `reveal` — a coverage mask that grows wherever a line has passed. Half
-///    resolution, because it is a smooth field and nobody can see the difference.
-///  * `glow`   — additive light from the lines themselves, faded every frame.
-///    The fade is what turns a moving point into a streak.
+/// The photograph is never composited. It exists only as `source`, which the
+/// tracers *sample* to decide what colour to paint with — the picture you end up
+/// looking at is an accumulation of coloured strokes that happens to converge on
+/// it. That is the whole idea: no layer of the real image is ever shown, so what
+/// reads as the photograph is entirely made of wind.
 ///
-/// The final frame is `target * reveal + glow + bloom(glow)`, so every lit pixel
-/// on screen was put there by something that moved through it.
+/// `source` covers a region **larger** than the visible frame. Tracers live in
+/// that larger space and are only drawn where they cross the frame, so lines
+/// enter and leave from off-screen instead of dying against a border. The
+/// visible canvas is therefore a slight crop into the photograph.
 final class Canvas {
 
     let width: Int
     let height: Int
 
-    /// Graded photograph, RGBX at render resolution.
-    private(set) var target: [UInt8]
-    /// Line colour for each pixel: the photograph's hue held at a high, even
-    /// value. Sampling `target` directly would make lines invisible over the
-    /// dark parts of the image, which is where the interesting structure is.
-    private(set) var lineColor: [UInt8]
+    /// Fraction of the frame added beyond each edge for tracers to fly in from.
+    static let overscan: Float = 0.11
 
-    private let revealW: Int
-    private let revealH: Int
-    private var reveal: [UInt16]
+    let marginX: Float
+    let marginY: Float
 
-    private var glow: [UInt8]           // RGBX, additive, faded each frame
+    /// Graded photograph over the overscanned region, RGBX.
+    private var source: [UInt8]
+    /// Accumulated paint over the visible frame, RGBX at 16 bits so that a
+    /// stroke laid down at low opacity still moves the value.
+    private var paint: [UInt16]
+    /// Additive light at the stroke heads, faded every frame.
+    private var glow: [UInt8]
+
+    /// Bookkeeping only — where the wind has been. Never composited; it exists
+    /// so new tracers can be aimed at the parts of the frame still untouched,
+    /// and so the reveal knows when it is finished.
+    private let coverW: Int
+    private let coverH: Int
+    private var coverage: [UInt16]
 
     private let bloomW: Int
     private let bloomH: Int
     private var bloom: [Float]
     private var bloomScratch: [Float]
 
-    private let xRev0: [Int32]
-    private let xRev1: [Int32]
-    private let xRevF: [Float]
+    private let sourceScaleX: Float
+    private let sourceScaleY: Float
+
     private let xBloom0: [Int32]
     private let xBloom1: [Int32]
     private let xBloomF: [Float]
@@ -55,42 +63,38 @@ final class Canvas {
         self.height = max(16, height)
         let n = self.width * self.height
 
-        target = [UInt8](repeating: 0, count: n * 4)
-        lineColor = [UInt8](repeating: 0, count: n * 4)
+        marginX = Float(self.width) * Canvas.overscan
+        marginY = Float(self.height) * Canvas.overscan
+        // A tracer coordinate runs from -margin to size+margin; `source` is
+        // stored at frame resolution but represents that whole span.
+        sourceScaleX = Float(self.width) / (Float(self.width) + 2 * marginX)
+        sourceScaleY = Float(self.height) / (Float(self.height) + 2 * marginY)
 
-        revealW = max(8, self.width / 2)
-        revealH = max(8, self.height / 2)
-        reveal = [UInt16](repeating: 0, count: revealW * revealH)
-
+        source = [UInt8](repeating: 0, count: n * 4)
+        paint = [UInt16](repeating: 0, count: n * 4)
         glow = [UInt8](repeating: 0, count: n * 4)
+
+        coverW = max(8, self.width / 8)
+        coverH = max(8, self.height / 8)
+        coverage = [UInt16](repeating: 0, count: coverW * coverH)
 
         bloomW = max(4, self.width / 4)
         bloomH = max(4, self.height / 4)
         bloom = [Float](repeating: 0, count: bloomW * bloomH * 3)
         bloomScratch = [Float](repeating: 0, count: bloomW * bloomH * 3)
 
-        var r0 = [Int32](), r1 = [Int32](), rf = [Float]()
-        var b0 = [Int32](), b1 = [Int32](), bf = [Float]()
-        var vx = [Float]()
+        var b0 = [Int32](), b1 = [Int32](), bf = [Float](), vx = [Float]()
         let halfW = Float(self.width) * 0.5, halfH = Float(self.height) * 0.5
         let invR2 = 1 / (halfW * halfW + halfH * halfH)
         for x in 0..<self.width {
-            let rx = Float(x) * 0.5
-            let i0 = min(Int(rx), revealW - 1)
-            r0.append(Int32(i0)); r1.append(Int32(min(i0 + 1, revealW - 1)))
-            rf.append(rx - Float(i0))
-
             let bx = Float(x) * 0.25
             let j0 = min(Int(bx), bloomW - 1)
             b0.append(Int32(j0)); b1.append(Int32(min(j0 + 1, bloomW - 1)))
             bf.append(bx - Float(j0))
-
             let dx = Float(x) - halfW
             vx.append(dx * dx * invR2)
         }
-        xRev0 = r0; xRev1 = r1; xRevF = rf
-        xBloom0 = b0; xBloom1 = b1; xBloomF = bf
-        xVignette = vx
+        xBloom0 = b0; xBloom1 = b1; xBloomF = bf; xVignette = vx
 
         bytesPerRow = self.width * 4
         byteCount = bytesPerRow * self.height
@@ -108,9 +112,9 @@ final class Canvas {
 
     // MARK: - Image
 
-    /// Aspect-fill the photograph, then grade it: saturation up, a filmic
-    /// rolloff, and shadows lifted into a cold blue-black instead of a dead
-    /// neutral. Glacial water goes properly deep; sunlit silt glows.
+    /// Aspect-fill the photograph across the overscanned region and grade it.
+    /// Saturation is pushed hard here: this is the palette every stroke draws
+    /// from, and a flat original yields flat wind.
     func setImage(_ image: CGImage, saturation: Float) {
         var raw = [UInt8](repeating: 0, count: width * height * 4)
         raw.withUnsafeMutableBytes { buf in
@@ -131,7 +135,6 @@ final class Canvas {
                                        width: dw, height: dh))
         }
 
-        let shadow: (Float, Float, Float) = (0.010, 0.017, 0.038)
         let inv: Float = 1.0 / 255.0
         for i in stride(from: 0, to: width * height * 4, by: 4) {
             var r = Float(raw[i]) * inv
@@ -143,183 +146,182 @@ final class Canvas {
             g = l + (g - l) * saturation
             b = l + (b - l) * saturation
 
+            // Lift the floor a little. Paint that converges on pure black gives
+            // dead holes in the picture where no stroke is ever visible.
             @inline(__always) func curve(_ v: Float) -> Float {
                 let c = min(max(v, 0), 1)
                 let s = c * c * (3 - 2 * c)
-                return min(max(c * 0.40 + s * 0.60, 0), 1)
+                return 0.045 + 0.955 * min(max(c * 0.42 + s * 0.58, 0), 1)
             }
-            r = curve(r); g = curve(g); b = curve(b)
 
-            let lift = 1 - min(max(l * 1.6, 0), 1)
-            r = min(r + shadow.0 * lift, 1)
-            g = min(g + shadow.1 * lift, 1)
-            b = min(b + shadow.2 * lift, 1)
-
-            target[i] = UInt8(r * 255)
-            target[i + 1] = UInt8(g * 255)
-            target[i + 2] = UInt8(b * 255)
-            target[i + 3] = 255
-
-            // Hue-preserving value normalisation for the line colour: scale all
-            // three channels by one factor, so the hue and saturation are
-            // untouched and only the brightness is raised.
-            let m = max(r, max(g, b))
-            let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-            if m > 0.004 {
-                let wanted = 0.62 + 0.38 * powf(lum, 0.5)
-                let f = min(wanted / m, 14)
-                lineColor[i] = UInt8(min(r * f, 1) * 255)
-                lineColor[i + 1] = UInt8(min(g * f, 1) * 255)
-                lineColor[i + 2] = UInt8(min(b * f, 1) * 255)
-            } else {
-                lineColor[i] = 40; lineColor[i + 1] = 60; lineColor[i + 2] = 90
-            }
-            lineColor[i + 3] = 255
+            source[i] = UInt8(min(curve(r), 1) * 255)
+            source[i + 1] = UInt8(min(curve(g), 1) * 255)
+            source[i + 2] = UInt8(min(curve(b), 1) * 255)
+            source[i + 3] = 255
         }
     }
 
     func reset() {
-        for i in 0..<reveal.count { reveal[i] = 0 }
+        for i in 0..<paint.count { paint[i] = 0 }
         for i in 0..<glow.count { glow[i] = 0 }
+        for i in 0..<coverage.count { coverage[i] = 0 }
     }
 
-    /// Mean coverage, sampled. Drives the reveal-to-hold transition.
-    func meanReveal() -> Float {
-        var sum: Float = 0
-        var count = 0
-        let step = max(1, reveal.count / 4000)
-        var i = 0
-        while i < reveal.count { sum += Float(reveal[i]); count += 1; i += step }
-        return count > 0 ? sum / Float(count) / 65535 : 0
-    }
+    // MARK: - Sampling
 
-    /// Coverage at a canvas coordinate, clamped — callers sample slightly
-    /// outside the frame when choosing where to start a line.
-    func revealFraction(atX x: Float, y: Float) -> Float {
-        let rx = min(max(Int(x * 0.5), 0), revealW - 1)
-        let ry = min(max(Int(y * 0.5), 0), revealH - 1)
-        return Float(reveal[ry * revealW + rx]) / 65535
-    }
-
-    /// Separable box blur over the coverage mask. Used sparingly and late.
-    func smoothReveal() {
-        let w = revealW, h = revealH
-        var scratch = [UInt16](repeating: 0, count: reveal.count)
-        reveal.withUnsafeMutableBufferPointer { r in
-            scratch.withUnsafeMutableBufferPointer { t in
-                for y in 0..<h {
-                    let row = y * w
-                    for x in 0..<w {
-                        let a = UInt32(r[row + max(x - 1, 0)])
-                        let b = UInt32(r[row + x])
-                        let c = UInt32(r[row + min(x + 1, w - 1)])
-                        t[row + x] = UInt16((a + b + b + c) >> 2)
-                    }
-                }
-                for x in 0..<w {
-                    for y in 0..<h {
-                        let a = UInt32(t[max(y - 1, 0) * w + x])
-                        let b = UInt32(t[y * w + x])
-                        let c = UInt32(t[min(y + 1, h - 1) * w + x])
-                        r[y * w + x] = UInt16((a + b + b + c) >> 2)
-                    }
-                }
-            }
-        }
-    }
-
-    func decayReveal(_ keep: Float) {
-        let k = UInt32(min(max(keep, 0), 1) * 65536)
-        reveal.withUnsafeMutableBufferPointer { r in
-            for i in 0..<r.count { r[i] = UInt16((UInt32(r[i]) &* k) >> 16) }
-        }
-    }
-
-    /// The coverage mask as a greyscale image, for diagnosing holes the wind
-    /// never reaches. Not used by the screensaver itself.
-    func debugRevealImage() -> CGImage? {
-        var g = [UInt8](repeating: 0, count: revealW * revealH)
-        for i in 0..<g.count { g[i] = UInt8(reveal[i] >> 8) }
-        return g.withUnsafeMutableBytes { buf -> CGImage? in
-            guard let ctx = CGContext(data: buf.baseAddress,
-                                      width: revealW, height: revealH,
-                                      bitsPerComponent: 8, bytesPerRow: revealW,
-                                      space: CGColorSpaceCreateDeviceGray(),
-                                      bitmapInfo: CGImageAlphaInfo.none.rawValue)
-            else { return nil }
-            return ctx.makeImage()
-        }
-    }
-
-    /// Fraction of the mask still below a threshold, for diagnostics.
-    func debugCoverageHistogram() -> [Int] {
-        var bins = [Int](repeating: 0, count: 10)
-        for v in reveal { bins[min(Int(v) * 10 / 65536, 9)] += 1 }
-        return bins
-    }
-
-    // MARK: - Deposition
-
-    /// Additive, anti-aliased point into the glow layer. Consecutive calls a
-    /// fraction of a pixel apart lay down a continuous line.
+    /// Bilinear colour lookup in tracer coordinates, which span the overscanned
+    /// region from `-margin` to `size + margin`.
     @inline(__always)
-    func addLight(x: Float, y: Float, intensity: Float) {
+    func sourceColor(atX x: Float, y: Float) -> (Float, Float, Float) {
+        let sx = (x + marginX) * sourceScaleX
+        let sy = (y + marginY) * sourceScaleY
+        let cx = min(max(sx, 0), Float(width - 1) - 0.001)
+        let cy = min(max(sy, 0), Float(height - 1) - 0.001)
+        let x0 = Int(cx), y0 = Int(cy)
+        let fx = cx - Float(x0), fy = cy - Float(y0)
+        let i00 = (y0 * width + x0) * 4
+        let i10 = i00 + 4
+        let i01 = i00 + width * 4
+        let i11 = i01 + 4
+        let w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy)
+        let w01 = (1 - fx) * fy, w11 = fx * fy
+        @inline(__always) func channel(_ c: Int) -> Float {
+            (Float(source[i00 + c]) * w00 + Float(source[i10 + c]) * w10
+             + Float(source[i01 + c]) * w01 + Float(source[i11 + c]) * w11) * (1.0 / 255)
+        }
+        return (channel(0), channel(1), channel(2))
+    }
+
+    /// Field coordinate for a tracer position, in units of the flow grid.
+    @inline(__always)
+    func fieldCoordinate(x: Float, y: Float, cols: Int, rows: Int) -> (Float, Float) {
+        ((x + marginX) * sourceScaleX * Float(cols) / Float(width),
+         (y + marginY) * sourceScaleY * Float(rows) / Float(height))
+    }
+
+    // MARK: - Painting
+
+    /// Lay one dab of a stroke. `alpha` blends toward the stroke's colour rather
+    /// than adding to it, so overlapping strokes behave like paint instead of
+    /// blowing out to white, and the accumulated field converges on the picture.
+    @inline(__always)
+    func paintDab(x: Float, y: Float, r: Float, g: Float, b: Float, alpha: Float) {
         if x < 0 || y < 0 || x >= Float(width - 1) || y >= Float(height - 1) { return }
         let x0 = Int(x), y0 = Int(y)
         let fx = x - Float(x0), fy = y - Float(y0)
-        let base = y0 * width + x0
+        let base = (y0 * width + x0) * 4
+        let cr = min(max(r, 0), 1) * 65535
+        let cg = min(max(g, 0), 1) * 65535
+        let cb = min(max(b, 0), 1) * 65535
 
-        glow.withUnsafeMutableBufferPointer { g in
-            lineColor.withUnsafeBufferPointer { lc in
-                @inline(__always) func put(_ p: Int, _ w: Float) {
-                    let a = w * intensity
-                    if a <= 0.002 { return }
-                    let o = p * 4
-                    let ar = Int(Float(lc[o]) * a)
-                    let ag = Int(Float(lc[o + 1]) * a)
-                    let ab = Int(Float(lc[o + 2]) * a)
-                    g[o] = UInt8(min(Int(g[o]) + ar, 255))
-                    g[o + 1] = UInt8(min(Int(g[o + 1]) + ag, 255))
-                    g[o + 2] = UInt8(min(Int(g[o + 2]) + ab, 255))
-                }
-                put(base, (1 - fx) * (1 - fy))
-                put(base + 1, fx * (1 - fy))
-                put(base + width, (1 - fx) * fy)
-                put(base + width + 1, fx * fy)
+        paint.withUnsafeMutableBufferPointer { p in
+            @inline(__always) func put(_ o: Int, _ w: Float) {
+                let a = w * alpha
+                if a <= 0.0015 { return }
+                p[o] = UInt16(Float(p[o]) + (cr - Float(p[o])) * a)
+                p[o + 1] = UInt16(Float(p[o + 1]) + (cg - Float(p[o + 1])) * a)
+                p[o + 2] = UInt16(Float(p[o + 2]) + (cb - Float(p[o + 2])) * a)
             }
+            put(base, (1 - fx) * (1 - fy))
+            put(base + 4, fx * (1 - fy))
+            put(base + width * 4, (1 - fx) * fy)
+            put(base + width * 4 + 4, fx * fy)
         }
     }
 
-    /// Widen the reveal relative to the line. The lit stroke stays hairline
-    /// sharp while the photograph behind it fills in on a softer brush, so the
-    /// image assembles smoothly instead of in visible scratches.
+    /// Additive light at the head of a stroke, in the stroke's own colour.
     @inline(__always)
-    func addReveal(x: Float, y: Float, amount: Float) {
-        if x < -64 || y < -64 || x > Float(width + 64) || y > Float(height + 64) { return }
-        let cx = Int(x * 0.5), cy = Int(y * 0.5)
-        let gain = min(max(amount, 0), 1)
-        reveal.withUnsafeMutableBufferPointer { r in
-            for dy in -2...2 {
-                let row = min(max(cy + dy, 0), revealH - 1) * revealW
-                for dx in -2...2 {
-                    let d2 = dx * dx + dy * dy
-                    if d2 > 4 { continue }
-                    let w = Canvas.brush[d2]
-                    let i = row + min(max(cx + dx, 0), revealW - 1)
-                    let current = Float(r[i])
-                    r[i] = UInt16(min(current + (65535 - current) * gain * w, 65535))
-                }
+    func addGlow(x: Float, y: Float, r: Float, g: Float, b: Float, intensity: Float) {
+        if x < 0 || y < 0 || x >= Float(width - 1) || y >= Float(height - 1) { return }
+        let x0 = Int(x), y0 = Int(y)
+        let fx = x - Float(x0), fy = y - Float(y0)
+        let base = (y0 * width + x0) * 4
+
+        // Additive, but capped per channel at a little over the stroke's own
+        // colour. Uncapped addition means every place several strokes share a
+        // path — a strong edge in the photograph, which is exactly where they
+        // gather — clips to white and reads as a hard drawn line.
+        let capR = min(r * 255 * 1.55, 255)
+        let capG = min(g * 255 * 1.55, 255)
+        let capB = min(b * 255 * 1.55, 255)
+        glow.withUnsafeMutableBufferPointer { gl in
+            @inline(__always) func put(_ o: Int, _ w: Float) {
+                let a = w * intensity
+                if a <= 0.002 { return }
+                gl[o] = UInt8(min(Float(gl[o]) + r * 255 * a, capR))
+                gl[o + 1] = UInt8(min(Float(gl[o + 1]) + g * 255 * a, capG))
+                gl[o + 2] = UInt8(min(Float(gl[o + 2]) + b * 255 * a, capB))
             }
+            put(base, (1 - fx) * (1 - fy))
+            put(base + 4, fx * (1 - fy))
+            put(base + width * 4, (1 - fx) * fy)
+            put(base + width * 4 + 4, fx * fy)
         }
     }
 
-    /// Falloff by squared distance for the reveal brush, indexed by dx²+dy².
-    private static let brush: [Float] = [1.0, 0.72, 0.52, 0, 0.30]
+    @inline(__always)
+    func markCoverage(x: Float, y: Float, amount: Float) {
+        let cx = Int(x) / 8, cy = Int(y) / 8
+        if cx < 0 || cy < 0 || cx >= coverW || cy >= coverH { return }
+        let i = cy * coverW + cx
+        let current = Float(coverage[i])
+        coverage[i] = UInt16(min(current + (65535 - current) * min(max(amount, 0), 1), 65535))
+    }
+
+    @inline(__always)
+    func coverageAt(x: Float, y: Float) -> Float {
+        let cx = min(max(Int(x) / 8, 0), coverW - 1)
+        let cy = min(max(Int(y) / 8, 0), coverH - 1)
+        return Float(coverage[cy * coverW + cx]) / 65535
+    }
+
+    func meanCoverage() -> Float {
+        var sum: Float = 0
+        for v in coverage { sum += Float(v) }
+        return sum / Float(coverage.count) / 65535
+    }
+
+    /// How far the painting has actually got, measured against the photograph
+    /// rather than against where the brush has been. The coverage grid says a
+    /// cell has been visited; this says the picture has arrived there, which is
+    /// the thing the phase transition actually cares about.
+    func paintProgress() -> Float {
+        var sum: Float = 0
+        var count = 0
+        let step = max(1, (width * height) / 20000)
+        var i = 0
+        while i < width * height {
+            let x = i % width, y = i / width
+            let o = i * 4
+            let pl = (0.2126 * Float(paint[o]) + 0.7152 * Float(paint[o + 1])
+                      + 0.0722 * Float(paint[o + 2])) * (1.0 / 65535)
+            // Map the visible pixel back into the overscanned source.
+            let sx = min(Int((Float(x) + marginX) * sourceScaleX), width - 1)
+            let sy = min(Int((Float(y) + marginY) * sourceScaleY), height - 1)
+            let so = (sy * width + sx) * 4
+            let sl = (0.2126 * Float(source[so]) + 0.7152 * Float(source[so + 1])
+                      + 0.0722 * Float(source[so + 2])) * (1.0 / 255)
+            sum += min(pl / max(sl, 0.02), 1)
+            count += 1
+            i += step
+        }
+        return count > 0 ? sum / Float(count) : 0
+    }
+
+    /// Fade the painting back toward black; the wind takes the picture away.
+    func fadePaint(_ keep: Float) {
+        let k = UInt32(min(max(keep, 0), 1) * 65536)
+        paint.withUnsafeMutableBufferPointer { p in
+            for i in 0..<p.count { p[i] = UInt16((UInt32(p[i]) &* k) >> 16) }
+        }
+        let ck = UInt32(min(max(keep, 0), 1) * 65536)
+        coverage.withUnsafeMutableBufferPointer { c in
+            for i in 0..<c.count { c[i] = UInt16((UInt32(c[i]) &* ck) >> 16) }
+        }
+    }
 
     // MARK: - Frame
 
-    /// Fade the trails, build the bloom from what is left, and flatten the three
-    /// layers into a displayable frame.
     func present(fade: Float, bloomAmount: Float, vignetteAmount: Float) -> CGImage? {
         fadeGlow(fade)
         buildBloom()
@@ -335,11 +337,11 @@ final class Canvas {
             DispatchQueue.concurrentPerform(iterations: bands) { band in
                 let y0 = band * rowsPer, y1 = min(h, y0 + rowsPer)
                 if y0 >= y1 { return }
-                for i in stride(from: y0 * w * 4, to: y1 * w * 4, by: 1) {
+                for i in (y0 * w * 4)..<(y1 * w * 4) {
                     let v = UInt32(g[i])
                     if v == 0 { continue }
-                    // The -1 guarantees the tail actually reaches zero; a pure
-                    // multiply leaves a permanent smear of 1s behind every line.
+                    // The -1 guarantees the tail reaches zero; a pure multiply
+                    // leaves a permanent smear of 1s behind every line.
                     let faded = (v &* k) >> 8
                     g[i] = UInt8(faded > 0 ? faded &- 1 : 0)
                 }
@@ -348,8 +350,7 @@ final class Canvas {
     }
 
     private func buildBloom() {
-        let bw = bloomW, bh = bloomH, w = width
-        let h = height
+        let bw = bloomW, bh = bloomH, w = width, h = height
         glow.withUnsafeBufferPointer { g in
             bloom.withUnsafeMutableBufferPointer { b in
                 let bands = min(bh, max(1, ProcessInfo.processInfo.activeProcessorCount))
@@ -359,9 +360,6 @@ final class Canvas {
                     if y0 >= y1 { return }
                     for by in y0..<y1 {
                         for bx in 0..<bw {
-                            // Four of the sixteen source pixels, not all of them:
-                            // two blur passes follow, so the extra reads buy
-                            // nothing visible and this pass is memory-bound.
                             var r: Float = 0, gg: Float = 0, bb: Float = 0
                             for dy in stride(from: 0, to: 4, by: 2) {
                                 let sy = by * 4 + dy
@@ -426,19 +424,15 @@ final class Canvas {
         nextOutput = (nextOutput + 1) % outputs.count
 
         let w = width, h = height
-        let rw = revealW, rh = revealH
         let bw = bloomW, bh = bloomH
         let stride = bytesPerRow
         let halfH = Float(h) * 0.5
-        let invR2 = 1 / (Float(w) * 0.5 * Float(w) * 0.5 + halfH * halfH)
+        let halfW = Float(w) * 0.5
+        let invR2 = 1 / (halfW * halfW + halfH * halfH)
 
-        target.withUnsafeBufferPointer { tgt in
+        paint.withUnsafeBufferPointer { pt in
         glow.withUnsafeBufferPointer { gl in
-        reveal.withUnsafeBufferPointer { rev in
         bloom.withUnsafeBufferPointer { bl in
-        xRev0.withUnsafeBufferPointer { xr0 in
-        xRev1.withUnsafeBufferPointer { xr1 in
-        xRevF.withUnsafeBufferPointer { xrf in
         xBloom0.withUnsafeBufferPointer { xb0 in
         xBloom1.withUnsafeBufferPointer { xb1 in
         xBloomF.withUnsafeBufferPointer { xbf in
@@ -450,17 +444,11 @@ final class Canvas {
                 if y0 >= y1 { return }
 
                 for y in y0..<y1 {
-                    let ry = Float(y) * 0.5
-                    let ry0 = min(Int(ry), rh - 1)
-                    let ry1 = min(ry0 + 1, rh - 1)
-                    let ryf = ry - Float(ry0)
-                    let revRow0 = ry0 * rw, revRow1 = ry1 * rw
-
                     let byv = Float(y) * 0.25
                     let by0 = min(Int(byv), bh - 1)
                     let by1 = min(by0 + 1, bh - 1)
                     let byf = byv - Float(by0)
-                    let bloomRow0 = by0 * bw, bloomRow1 = by1 * bw
+                    let bloomRow0 = by0 * bw * 3, bloomRow1 = by1 * bw * 3
 
                     let dyv = Float(y) - halfH
                     let yq = dyv * dyv * invR2
@@ -469,47 +457,37 @@ final class Canvas {
                     var o = y * w * 4
 
                     for x in 0..<w {
-                        let i0 = Int(xr0[x]), i1 = Int(xr1[x])
-                        let fx = xrf[x]
-                        let r00 = Float(rev[revRow0 + i0]), r10 = Float(rev[revRow0 + i1])
-                        let r01 = Float(rev[revRow1 + i0]), r11 = Float(rev[revRow1 + i1])
-                        let top = r00 + (r10 - r00) * fx
-                        let bot = r01 + (r11 - r01) * fx
-                        let cover = (top + (bot - top) * ryf) * (1.0 / 65535)
-
                         let j0 = Int(xb0[x]) * 3, j1 = Int(xb1[x]) * 3
                         let gx = xbf[x]
-                        let p00 = bloomRow0 * 3, p01 = bloomRow1 * 3
-
                         let q = xvg[x] + yq
                         let vig = 1 - vignetteAmount * q * q
                         let bloomScale = bloomAmount * vig
 
-                        var rgb = (Float(0), Float(0), Float(0))
+                        var chan = (Float(0), Float(0), Float(0))
                         for c in 0..<3 {
-                            let a = bl[p00 + j0 + c], b = bl[p00 + j1 + c]
-                            let cc = bl[p01 + j0 + c], d = bl[p01 + j1 + c]
+                            let a = bl[bloomRow0 + j0 + c], b = bl[bloomRow0 + j1 + c]
+                            let cc = bl[bloomRow1 + j0 + c], d = bl[bloomRow1 + j1 + c]
                             let t = a + (b - a) * gx
                             let u = cc + (d - cc) * gx
                             let value = (t + (u - t) * byf) * bloomScale
-                                + (Float(tgt[o + c]) * cover + Float(gl[o + c])) * vig
+                                + (Float(pt[o + c]) * (1.0 / 257) + Float(gl[o + c])) * vig
                             switch c {
-                            case 0: rgb.0 = value
-                            case 1: rgb.1 = value
-                            default: rgb.2 = value
+                            case 0: chan.0 = value
+                            case 1: chan.1 = value
+                            default: chan.2 = value
                             }
                         }
 
                         let p = x * 4
-                        row[p] = UInt8(min(max(rgb.2, 0), 255))
-                        row[p + 1] = UInt8(min(max(rgb.1, 0), 255))
-                        row[p + 2] = UInt8(min(max(rgb.0, 0), 255))
+                        row[p] = UInt8(min(max(chan.2, 0), 255))
+                        row[p + 1] = UInt8(min(max(chan.1, 0), 255))
+                        row[p + 2] = UInt8(min(max(chan.0, 0), 255))
                         row[p + 3] = 255
                         o += 4
                     }
                 }
             }
-        }}}}}}}}}}}
+        }}}}}}}
 
         guard let provider = CGDataProvider(dataInfo: nil, data: out,
                                             size: byteCount, releaseData: { _, _, _ in })
@@ -523,5 +501,27 @@ final class Canvas {
                             | CGBitmapInfo.byteOrder32Little.rawValue),
                        provider: provider, decode: nil,
                        shouldInterpolate: true, intent: .defaultIntent)
+    }
+
+    /// Coverage bookkeeping as a greyscale image, for diagnosing parts of the
+    /// frame the wind never reaches. Not used by the screensaver itself.
+    func debugCoverageImage() -> CGImage? {
+        var g = [UInt8](repeating: 0, count: coverW * coverH)
+        for i in 0..<g.count { g[i] = UInt8(coverage[i] >> 8) }
+        return g.withUnsafeMutableBytes { buf -> CGImage? in
+            guard let ctx = CGContext(data: buf.baseAddress,
+                                      width: coverW, height: coverH,
+                                      bitsPerComponent: 8, bytesPerRow: coverW,
+                                      space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue)
+            else { return nil }
+            return ctx.makeImage()
+        }
+    }
+
+    func debugCoverageHistogram() -> [Int] {
+        var bins = [Int](repeating: 0, count: 10)
+        for v in coverage { bins[min(Int(v) * 10 / 65536, 9)] += 1 }
+        return bins
     }
 }
