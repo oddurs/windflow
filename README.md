@@ -1,6 +1,8 @@
 # Windflow
 
-A macOS screensaver that draws your aerial photographs out of moving wind.
+[![ci](https://github.com/oddurs/windflow/actions/workflows/ci.yml/badge.svg)](https://github.com/oddurs/windflow/actions/workflows/ci.yml)
+
+A macOS screensaver that paints your aerial photographs out of moving wind.
 
 The photograph is never drawn. It exists only as a palette that the wind
 *samples*. The screen starts black; coloured streaks appear and begin flowing
@@ -14,13 +16,22 @@ on the photograph. There is no layer of the real image anywhere in the frame.
 
 ## Install
 
+Requires macOS 13 or later and the Xcode Command Line Tools (`xcode-select
+--install`). There is no Xcode project to open.
+
 ```sh
-scripts/build.sh     # builds a universal Windflow.saver + a preview harness
+git clone https://github.com/oddurs/windflow.git
+cd windflow
+scripts/build.sh     # universal Windflow.saver, ad-hoc signed, plus the tools
 scripts/install.sh   # copies it to ~/Library/Screen Savers and restarts the host
 ```
 
 Then **System Settings → Screen Saver → Other → Windflow**, and **Options…** to
 add your photographs.
+
+The build is ad-hoc signed, which is enough for a screensaver you compiled
+yourself. It is not notarised, so a copy downloaded from the internet would be
+quarantined — build it locally.
 
 ## Adding photographs
 
@@ -133,3 +144,23 @@ required. The renderer is entirely CPU-side, which avoids the Metal toolchain
 | Exposure | line brightness |
 | Bloom | halo around the brightest lines |
 | Time per image | reveal plus the hold before it dissolves |
+
+## Contributing
+
+```sh
+scripts/setup        # once: wires the git hooks
+scripts/task check   # fmt, lint, test, build — the gate CI runs
+```
+
+`main` advances only through a merged pull request. Start a unit of work with
+`scripts/agent start fix/the-thing`, which puts it in its own worktree and
+branch. Commits are Conventional Commits; the hooks enforce that and the full
+check before a push.
+
+If you are changing anything visual, render frames and look at them — see the
+`render-frames` skill in `.claude/skills/`. Every aesthetic bug in this project's
+history was invisible in the code and obvious in a PNG.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
