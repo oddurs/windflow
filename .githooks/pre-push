@@ -2,19 +2,22 @@
 set -eu
 
 remote=$1
-default=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null | sed "s|^$remote/||" || echo main)
 
-while read -r _local_ref local_sha remote_ref _remote_sha; do
-    case "$remote_ref" in
-        "refs/heads/$default")
-            # Allow only the push that creates the branch on the remote.
-            if git ls-remote --exit-code --heads "$remote" "$default" >/dev/null 2>&1; then
-                echo "pre-push: $default advances only through a merged pull request" >&2
-                exit 1
-            fi
-            ;;
-    esac
-    [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+# Assign, then test. Piping git into sed and falling back with || cannot work:
+# sed succeeds even when git failed, so the fallback never fires and the answer
+# is silently empty — which makes every guard below match nothing.
+default=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
+default=${default#"$remote/"}
+[ -n "$default" ] || default=main
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    if [ "$remote_ref" = "refs/heads/$default" ]; then
+        # Allow only the push that first creates the branch on the remote.
+        if git ls-remote --exit-code --heads "$remote" "$default" >/dev/null 2>&1; then
+            echo "pre-push: $default advances only through a merged pull request" >&2
+            exit 1
+        fi
+    fi
 done
 
 exec ./scripts/task check
