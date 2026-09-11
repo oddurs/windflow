@@ -1,0 +1,16 @@
+{
+  "version" : 1,
+  "lineLength" : 96,
+  "indentation" : { "spaces" : 4 },
+  "respectsExistingLineBreaks" : true,
+  "lineBreakBeforeEachArgument" : false,
+  "prioritizeKeepingFunctionOutputTogether" : true,
+  "indentConditionalCompilationBlocks" : false,
+  "rules" : {
+    "AlwaysUseLowerCamelCase" : false,
+    "NoBlockComments" : false,
+    "OrderedImports" : true,
+    "UseLetInEveryBoundCaseVariable" : false,
+    "UseSynthesizedInitializer" : false
+  }
+}

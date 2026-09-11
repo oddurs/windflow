@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import UniformTypeIdentifiers
 
 /// Built in code rather than a nib. Nib loading from inside `legacyScreenSaver`
@@ -21,45 +21,57 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
     }
 
     private let rows: [Row] = [
-        Row(key: Preferences.Key.density, title: "Streams", range: 0.25...2.5,
+        Row(
+            key: Preferences.Key.density, title: "Streams", range: 0.25...2.5,
             hint: "How many lines are in the air at once",
             format: { String(format: "%.2f×", $0) }),
-        Row(key: Preferences.Key.speed, title: "Wind speed", range: 0.25...3.0,
+        Row(
+            key: Preferences.Key.speed, title: "Wind speed", range: 0.25...3.0,
             hint: "How fast they travel",
             format: { String(format: "%.2f×", $0) }),
-        Row(key: Preferences.Key.trail, title: "Trail length", range: 0.2...3.0,
+        Row(
+            key: Preferences.Key.trail, title: "Trail length", range: 0.2...3.0,
             hint: "How long a streak stays lit behind the head",
             format: { String(format: "%.2f×", $0) }),
-        Row(key: Preferences.Key.swirl, title: "Wander", range: 0.0...1.6,
+        Row(
+            key: Preferences.Key.swirl, title: "Wander", range: 0.0...1.6,
             hint: "Turbulence layered over the photo's own structure",
             format: { String(format: "%.2f", $0) }),
-        Row(key: Preferences.Key.drift, title: "Freedom", range: 0.0...1.0,
+        Row(
+            key: Preferences.Key.drift, title: "Freedom", range: 0.0...1.0,
             hint: "0 traces the photo exactly, 1 lets open wind take over",
             format: { String(format: "%.2f", $0) }),
-        Row(key: Preferences.Key.saturation, title: "Colour depth", range: 0.6...2.2,
+        Row(
+            key: Preferences.Key.saturation, title: "Colour depth", range: 0.6...2.2,
             hint: "Saturation of the recovered image",
             format: { String(format: "%.2f", $0) }),
-        Row(key: Preferences.Key.exposure, title: "Exposure", range: 0.4...2.0,
+        Row(
+            key: Preferences.Key.exposure, title: "Exposure", range: 0.4...2.0,
             hint: "Overall glyph coverage",
             format: { String(format: "%.2f", $0) }),
-        Row(key: Preferences.Key.bloom, title: "Bloom", range: 0.0...2.0,
+        Row(
+            key: Preferences.Key.bloom, title: "Bloom", range: 0.0...2.0,
             hint: "Halo around the brightest lines",
             format: { String(format: "%.2f", $0) }),
-        Row(key: Preferences.Key.regions, title: "Passages", range: 6.0...140.0,
+        Row(
+            key: Preferences.Key.regions, title: "Passages", range: 6.0...140.0,
             hint: "How many separate areas the picture is broken into; strokes stay inside one",
             format: { String(format: "%.0f", $0) }),
-        Row(key: Preferences.Key.relief, title: "Impasto", range: 0.0...2.5,
+        Row(
+            key: Preferences.Key.relief, title: "Impasto", range: 0.0...2.5,
             hint: "How strongly light rakes across the thickness of the paint",
             format: { String(format: "%.2f", $0) }),
-        Row(key: Preferences.Key.secondsPerImage, title: "Time per image", range: 20.0...400.0,
+        Row(
+            key: Preferences.Key.secondsPerImage, title: "Time per image", range: 20.0...400.0,
             hint: "Includes the reveal and the hold before it dissolves",
             format: { String(format: "%.0f s", $0) }),
     ]
 
     override init() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
-                          styleMask: [.titled],
-                          backing: .buffered, defer: false)
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+            styleMask: [.titled],
+            backing: .buffered, defer: false)
         window.title = "Windflow"
         super.init()
         urls = ImageLibrary.urls()
@@ -101,9 +113,10 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
         libraryButtons.orientation = .horizontal
         libraryButtons.spacing = 8
 
-        let note = label("Photos are copied into Windflow's own folder so the "
-                         + "screensaver can still read them while it runs.",
-                         size: 10, weight: .regular)
+        let note = label(
+            "Photos are copied into Windflow's own folder so the "
+                + "screensaver can still read them while it runs.",
+            size: 10, weight: .regular)
         note.textColor = .tertiaryLabelColor
         note.lineBreakMode = .byWordWrapping
         note.maximumNumberOfLines = 3
@@ -125,10 +138,11 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
             let title = label(row.title, size: 12, weight: .regular)
             title.toolTip = row.hint
 
-            let slider = NSSlider(value: currentValue(row.key),
-                                  minValue: row.range.lowerBound,
-                                  maxValue: row.range.upperBound,
-                                  target: self, action: #selector(sliderChanged(_:)))
+            let slider = NSSlider(
+                value: currentValue(row.key),
+                minValue: row.range.lowerBound,
+                maxValue: row.range.upperBound,
+                target: self, action: #selector(sliderChanged(_:)))
             slider.isContinuous = true
             slider.identifier = NSUserInterfaceItemIdentifier(row.key)
             slider.toolTip = row.hint
@@ -145,8 +159,9 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
             grid.addRow(with: [title, slider, value])
         }
 
-        let shuffle = NSButton(checkboxWithTitle: "Shuffle photographs",
-                               target: self, action: #selector(shuffleChanged(_:)))
+        let shuffle = NSButton(
+            checkboxWithTitle: "Shuffle photographs",
+            target: self, action: #selector(shuffleChanged(_:)))
         shuffle.state = Preferences.shared.shuffle ? .on : .off
         grid.addRow(with: [NSGridCell.emptyContentView, shuffle, NSGridCell.emptyContentView])
 
@@ -196,8 +211,11 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
 
     @objc private func sliderChanged(_ sender: NSSlider) {
         guard let key = sender.identifier?.rawValue,
-              let row = rows.first(where: { $0.key == key }) else { return }
-        UserDefaults.standard.set(sender.doubleValue, forKey: key) // keeps preview apps in sync
+            let row = rows.first(where: { $0.key == key })
+        else { return }
+        // Mirrored into the standard domain so a preview harness running outside
+        // the screensaver host sees the change too.
+        UserDefaults.standard.set(sender.doubleValue, forKey: key)
         store(key, sender.doubleValue)
         valueLabels[key]?.stringValue = row.format(sender.doubleValue)
     }
@@ -234,10 +252,12 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
     private func ingest(_ url: URL) {
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-           isDirectory.boolValue {
-            let items = (try? FileManager.default.contentsOfDirectory(
-                at: url, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles])) ?? []
+            isDirectory.boolValue
+        {
+            let items =
+                (try? FileManager.default.contentsOfDirectory(
+                    at: url, includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles])) ?? []
             for item in items
             where ImageLibrary.allowedExtensions.contains(item.pathExtension.lowercased()) {
                 ImageLibrary.importImage(from: item)
@@ -272,23 +292,28 @@ final class ConfigSheetController: NSObject, NSTableViewDataSource, NSTableViewD
 
     func numberOfRows(in tableView: NSTableView) -> Int { urls.count }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?,
-                   row: Int) -> NSView? {
+    func tableView(
+        _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?,
+        row: Int
+    ) -> NSView? {
         let id = NSUserInterfaceItemIdentifier("cell")
-        let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView
-            ?? { let c = NSTableCellView()
-                 let t = NSTextField(labelWithString: "")
-                 t.translatesAutoresizingMaskIntoConstraints = false
-                 t.lineBreakMode = .byTruncatingMiddle
-                 c.addSubview(t)
-                 c.textField = t
-                 NSLayoutConstraint.activate([
+        let cell =
+            tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView
+            ?? {
+                let c = NSTableCellView()
+                let t = NSTextField(labelWithString: "")
+                t.translatesAutoresizingMaskIntoConstraints = false
+                t.lineBreakMode = .byTruncatingMiddle
+                c.addSubview(t)
+                c.textField = t
+                NSLayoutConstraint.activate([
                     t.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 4),
                     t.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -4),
                     t.centerYAnchor.constraint(equalTo: c.centerYAnchor),
-                 ])
-                 c.identifier = id
-                 return c }()
+                ])
+                c.identifier = id
+                return c
+            }()
         cell.textField?.stringValue = urls[row].deletingPathExtension().lastPathComponent
         return cell
     }

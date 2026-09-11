@@ -1,0 +1,25 @@
+#!/bin/sh
+# Run once after cloning.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+
+git config core.hooksPath .githooks
+echo "hooks: $(git config core.hooksPath)"
+
+missing=0
+for tool in swiftc xcrun git; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "missing: $tool" >&2
+        missing=1
+    fi
+done
+if ! xcrun swift-format --version >/dev/null 2>&1; then
+    echo "missing: swift-format (ships with the Swift toolchain / Command Line Tools)" >&2
+    missing=1
+fi
+[ "$missing" -eq 0 ] || exit 1
+
+echo "toolchain: swift $(swiftc --version 2>/dev/null | head -1 | sed 's/.*version //;s/ .*//')"
+echo "ready. next: scripts/task check"

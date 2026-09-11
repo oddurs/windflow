@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 /// A stand-in braided-river delta, generated from domain-warped ridged noise, so
 /// the screensaver has something to draw before any photographs are added.
@@ -7,7 +7,9 @@ import CoreGraphics
 /// field the kind of long coherent channels it is designed to trace.
 enum ProceduralImage {
 
-    static func make(width: Int = 1600, height: Int = 900, seed: UInt32 = 20_260_909) -> CGImage? {
+    static func make(
+        width: Int = 1600, height: Int = 900, seed: UInt32 = 20_260_909
+    ) -> CGImage? {
         var pixels = [UInt8](repeating: 255, count: width * height * 4)
         let inv = 1.0 / Float(max(width, height))
 
@@ -26,10 +28,12 @@ enum ProceduralImage {
                 // into meandering, braiding channels.
                 let w1x = Noise.fbm2(fx * 0.8, fy * 0.8, octaves: 4, seed: seed)
                 let w1y = Noise.fbm2(fx * 0.8 + 5.2, fy * 0.8 + 1.3, octaves: 4, seed: seed)
-                let w2x = Noise.fbm2(fx * 1.9 + w1x * 1.6, fy * 1.9 + w1y * 1.6,
-                                     octaves: 4, seed: seed &+ 91)
-                let w2y = Noise.fbm2(fx * 1.9 + w1x * 1.6 + 3.7, fy * 1.9 + w1y * 1.6 + 8.1,
-                                     octaves: 4, seed: seed &+ 91)
+                let w2x = Noise.fbm2(
+                    fx * 1.9 + w1x * 1.6, fy * 1.9 + w1y * 1.6,
+                    octaves: 4, seed: seed &+ 91)
+                let w2y = Noise.fbm2(
+                    fx * 1.9 + w1x * 1.6 + 3.7, fy * 1.9 + w1y * 1.6 + 8.1,
+                    octaves: 4, seed: seed &+ 91)
 
                 // Shear along the diagonal so the whole delta has a direction of
                 // travel, the way a real valley does.
@@ -42,8 +46,10 @@ enum ProceduralImage {
                 let channel = smoothstep(0.70, 0.965, ridge)
                 let braid = smoothstep(0.52, 0.86, ridge) * 0.45
 
-                let grain = Noise.fbm2(fx * 14, fy * 14, octaves: 3, seed: seed &+ 7) * 0.5 + 0.5
-                let sun = smoothstep(0.0, 1.0, 1 - (Float(x) * inv * 0.8 + Float(y) * inv * 0.5))
+                let grain =
+                    Noise.fbm2(fx * 14, fy * 14, octaves: 3, seed: seed &+ 7) * 0.5 + 0.5
+                let sun = smoothstep(
+                    0.0, 1.0, 1 - (Float(x) * inv * 0.8 + Float(y) * inv * 0.5))
 
                 var r = mix(sandDeep.0, sandLit.0, sun * 0.85 + grain * 0.22)
                 var g = mix(sandDeep.1, sandLit.1, sun * 0.85 + grain * 0.22)
@@ -65,11 +71,13 @@ enum ProceduralImage {
         }
 
         return pixels.withUnsafeMutableBytes { buf -> CGImage? in
-            guard let ctx = CGContext(data: buf.baseAddress,
-                                      width: width, height: height,
-                                      bitsPerComponent: 8, bytesPerRow: width * 4,
-                                      space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            guard
+                let ctx = CGContext(
+                    data: buf.baseAddress,
+                    width: width, height: height,
+                    bitsPerComponent: 8, bytesPerRow: width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
             else { return nil }
             return ctx.makeImage()
         }
@@ -79,7 +87,9 @@ enum ProceduralImage {
         a + (b - a) * min(max(t, 0), 1)
     }
 
-    @inline(__always) private static func smoothstep(_ a: Float, _ b: Float, _ v: Float) -> Float {
+    @inline(__always) private static func smoothstep(
+        _ a: Float, _ b: Float, _ v: Float
+    ) -> Float {
         let t = min(max((v - a) / (b - a), 0), 1)
         return t * t * (3 - 2 * t)
     }

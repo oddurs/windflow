@@ -15,9 +15,10 @@ final class Harness: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let frame = NSRect(x: 0, y: 0, width: 1440, height: 900)
-        window = NSWindow(contentRect: frame,
-                          styleMask: [.titled, .closable, .resizable, .miniaturizable],
-                          backing: .buffered, defer: false)
+        window = NSWindow(
+            contentRect: frame,
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered, defer: false)
         window.title = "Windflow — preview"
         window.center()
         window.delegate = self

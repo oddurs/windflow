@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # AppKit, ScreenSaver.framework and the Swift toolchain; no Linux path exists.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Toolchain
+        run: |
+          swiftc --version
+          xcrun swift-format --version
+
+      - name: Check
+        run: ./scripts/task check
+
+  required:
+    # The single status check branch protection names, so jobs can be added
+    # without editing the protection rule.
+    if: always()
+    needs: [check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify
+        run: |
+          [ "${{ needs.check.result }}" = "success" ] || exit 1
+          echo "all checks passed"

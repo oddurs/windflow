@@ -1,6 +1,6 @@
-import Foundation
 import AppKit
 import CoreGraphics
+import Foundation
 
 /// The drawing surface.
 ///
@@ -37,10 +37,10 @@ final class Canvas {
 
     // MARK: Painting layers
 
-    private var paint: [UInt16]             // RGBX, 16-bit so low-opacity dabs register
-    private var relief: [UInt16]            // paint thickness
-    private var grain: [UInt8]              // static canvas weave
-    private var glow: [UInt8]               // RGBX, additive, faded each frame
+    private var paint: [UInt16]  // RGBX, 16-bit so low-opacity dabs register
+    private var relief: [UInt16]  // paint thickness
+    private var grain: [UInt8]  // static canvas weave
+    private var glow: [UInt8]  // RGBX, additive, faded each frame
 
     // MARK: Bookkeeping
 
@@ -93,7 +93,8 @@ final class Canvas {
             for x in 0..<self.width {
                 let fine = Noise.value2(Float(x) * 0.9, Float(y) * 0.9, 0x5EED)
                 let weave = (sin(Float(x) * 1.7) + sin(Float(y) * 1.9)) * 0.11 + 0.5
-                grain[y * self.width + x] = UInt8(min(max(fine * 0.62 + weave * 0.38, 0), 1) * 255)
+                grain[y * self.width + x] = UInt8(
+                    min(max(fine * 0.62 + weave * 0.38, 0), 1) * 255)
             }
         }
 
@@ -166,17 +167,24 @@ final class Canvas {
         let sx = (x + marginX) * sourceScaleX
         let sy = (y + marginY) * sourceScaleY
         switch level {
-        case 2: return sample(src.level2, w: src.mid2W, h: src.mid2H,
-                              x: sx * 0.25, y: sy * 0.25)
-        case 1: return sample(src.level1, w: src.mid1W, h: src.mid1H,
-                              x: sx * 0.5, y: sy * 0.5)
+        case 2:
+            return sample(
+                src.level2, w: src.mid2W, h: src.mid2H,
+                x: sx * 0.25, y: sy * 0.25)
+        case 1:
+            return sample(
+                src.level1, w: src.mid1W, h: src.mid1H,
+                x: sx * 0.5, y: sy * 0.5)
         default: return sample(src.level0, w: width, h: height, x: sx, y: sy)
         }
     }
 
     @inline(__always)
-    private func sample(_ buf: [UInt8], w: Int, h: Int, x: Float, y: Float)
-        -> (Float, Float, Float) {
+    private func sample(
+        _ buf: [UInt8], w: Int, h: Int, x: Float, y: Float
+    )
+        -> (Float, Float, Float)
+    {
         let cx = min(max(x, 0), Float(w - 1) - 0.001)
         let cy = min(max(y, 0), Float(h - 1) - 0.001)
         let x0 = Int(cx), y0 = Int(cy)
@@ -187,7 +195,7 @@ final class Canvas {
         let w01 = (1 - fx) * fy, w11 = fx * fy
         @inline(__always) func channel(_ c: Int) -> Float {
             (Float(buf[i00 + c]) * w00 + Float(buf[i10 + c]) * w10
-             + Float(buf[i01 + c]) * w01 + Float(buf[i11 + c]) * w11) * (1.0 / 255)
+                + Float(buf[i01 + c]) * w01 + Float(buf[i11 + c]) * w11) * (1.0 / 255)
         }
         return (channel(0), channel(1), channel(2))
     }
@@ -196,14 +204,18 @@ final class Canvas {
     /// the field found — a region boundary, say.
     @inline(__always)
     func canvasPoint(fieldX: Float, fieldY: Float, cols: Int, rows: Int) -> (Float, Float) {
-        (fieldX * Float(width) / (Float(cols) * sourceScaleX) - marginX,
-         fieldY * Float(height) / (Float(rows) * sourceScaleY) - marginY)
+        (
+            fieldX * Float(width) / (Float(cols) * sourceScaleX) - marginX,
+            fieldY * Float(height) / (Float(rows) * sourceScaleY) - marginY
+        )
     }
 
     @inline(__always)
     func fieldCoordinate(x: Float, y: Float, cols: Int, rows: Int) -> (Float, Float) {
-        ((x + marginX) * sourceScaleX * Float(cols) / Float(width),
-         (y + marginY) * sourceScaleY * Float(rows) / Float(height))
+        (
+            (x + marginX) * sourceScaleX * Float(cols) / Float(width),
+            (y + marginY) * sourceScaleY * Float(rows) / Float(height)
+        )
     }
 
     // MARK: - Painting
@@ -214,8 +226,10 @@ final class Canvas {
     /// paint instead of blowing out, and is why the accumulation converges on
     /// the picture rather than past it.
     @inline(__always)
-    func paintDab(x: Float, y: Float, r: Float, g: Float, b: Float,
-                  alpha: Float, thickness: Float) {
+    func paintDab(
+        x: Float, y: Float, r: Float, g: Float, b: Float,
+        alpha: Float, thickness: Float
+    ) {
         if x < 0 || y < 0 || x >= Float(width - 1) || y >= Float(height - 1) { return }
         let x0 = Int(x), y0 = Int(y)
         let fx = x - Float(x0), fy = y - Float(y0)
@@ -299,13 +313,17 @@ final class Canvas {
                                 let x = cx * 8 + ox, y = cy * 8 + oy
                                 if x >= width || y >= height { continue }
                                 let o = (y * width + x) * 4
-                                let pl = (0.2126 * Float(pt[o]) + 0.7152 * Float(pt[o + 1])
-                                          + 0.0722 * Float(pt[o + 2])) * (1.0 / 65535)
-                                let sx = min(Int((Float(x) + marginX) * sourceScaleX), width - 1)
-                                let sy = min(Int((Float(y) + marginY) * sourceScaleY), height - 1)
+                                let pl =
+                                    (0.2126 * Float(pt[o]) + 0.7152 * Float(pt[o + 1])
+                                        + 0.0722 * Float(pt[o + 2])) * (1.0 / 65535)
+                                let sx = min(
+                                    Int((Float(x) + marginX) * sourceScaleX), width - 1)
+                                let sy = min(
+                                    Int((Float(y) + marginY) * sourceScaleY), height - 1)
                                 let so = (sy * width + sx) * 4
-                                let sl = (0.2126 * Float(s0[so]) + 0.7152 * Float(s0[so + 1])
-                                          + 0.0722 * Float(s0[so + 2])) * (1.0 / 255)
+                                let sl =
+                                    (0.2126 * Float(s0[so]) + 0.7152 * Float(s0[so + 1])
+                                        + 0.0722 * Float(s0[so + 2])) * (1.0 / 255)
                                 ratio += min(pl / max(sl, 0.02), 1)
                                 taken += 1
                             }
@@ -350,12 +368,15 @@ final class Canvas {
 
     // MARK: - Frame
 
-    func present(fade: Float, reliefKeep: Float, bloomAmount: Float,
-                 vignetteAmount: Float, lighting: Float) -> CGImage? {
+    func present(
+        fade: Float, reliefKeep: Float, bloomAmount: Float,
+        vignetteAmount: Float, lighting: Float
+    ) -> CGImage? {
         decayLayers(glowKeep: fade, reliefKeep: reliefKeep)
         buildBloom()
-        return composite(bloomAmount: bloomAmount, vignetteAmount: vignetteAmount,
-                         lighting: lighting)
+        return composite(
+            bloomAmount: bloomAmount, vignetteAmount: vignetteAmount,
+            lighting: lighting)
     }
 
     /// Glow and relief both decay here rather than inside the composite, so the
@@ -408,7 +429,8 @@ final class Canvas {
                                     let sx = bx * 4 + dx
                                     if sx >= w { break }
                                     let o = (sy * w + sx) * 4
-                                    r += Float(g[o]); gg += Float(g[o + 1]); bb += Float(g[o + 2])
+                                    r += Float(g[o]); gg += Float(g[o + 1]);
+                                    bb += Float(g[o + 2])
                                 }
                             }
                             let o = (by * bw + bx) * 3
@@ -435,7 +457,8 @@ final class Canvas {
                         }
                         for x in 0..<bw {
                             dst[(y * bw + x) * 3 + c] = acc * inv
-                            acc += src[(y * bw + min(x + radius + 1, bw - 1)) * 3 + c]
+                            acc +=
+                                src[(y * bw + min(x + radius + 1, bw - 1)) * 3 + c]
                                 - src[(y * bw + max(x - radius, 0)) * 3 + c]
                         }
                     }
@@ -448,7 +471,8 @@ final class Canvas {
                         }
                         for y in 0..<bh {
                             src[(y * bw + x) * 3 + c] = acc * inv
-                            acc += dst[(min(y + radius + 1, bh - 1) * bw + x) * 3 + c]
+                            acc +=
+                                dst[(min(y + radius + 1, bh - 1) * bw + x) * 3 + c]
                                 - dst[(max(y - radius, 0) * bw + x) * 3 + c]
                         }
                     }
@@ -457,8 +481,10 @@ final class Canvas {
         }
     }
 
-    private func composite(bloomAmount: Float, vignetteAmount: Float,
-                           lighting: Float) -> CGImage? {
+    private func composite(
+        bloomAmount: Float, vignetteAmount: Float,
+        lighting: Float
+    ) -> CGImage? {
         let out = outputs[nextOutput]
         nextOutput = (nextOutput + 1) % outputs.count
 
@@ -479,122 +505,186 @@ final class Canvas {
         let hnx = hx / hlen, hny = hy / hlen, hnz = hz / hlen
 
         paint.withUnsafeBufferPointer { pt in
-        glow.withUnsafeBufferPointer { gl in
-        relief.withUnsafeBufferPointer { rf in
-        grain.withUnsafeBufferPointer { gr in
-        bloom.withUnsafeBufferPointer { bl in
-        xBloom0.withUnsafeBufferPointer { xb0 in
-        xBloom1.withUnsafeBufferPointer { xb1 in
-        xBloomF.withUnsafeBufferPointer { xbf in
-        xVignette.withUnsafeBufferPointer { xvg in
-            let bands = min(h, max(1, ProcessInfo.processInfo.activeProcessorCount))
-            let rowsPer = (h + bands - 1) / bands
-            DispatchQueue.concurrentPerform(iterations: bands) { band in
-                let y0 = band * rowsPer, y1 = min(h, y0 + rowsPer)
-                if y0 >= y1 { return }
+            glow.withUnsafeBufferPointer { gl in
+                relief.withUnsafeBufferPointer { rf in
+                    grain.withUnsafeBufferPointer { gr in
+                        bloom.withUnsafeBufferPointer { bl in
+                            xBloom0.withUnsafeBufferPointer { xb0 in
+                                xBloom1.withUnsafeBufferPointer { xb1 in
+                                    xBloomF.withUnsafeBufferPointer { xbf in
+                                        xVignette.withUnsafeBufferPointer { xvg in
+                                            let bands = min(
+                                                h,
+                                                max(
+                                                    1,
+                                                    ProcessInfo.processInfo.activeProcessorCount
+                                                ))
+                                            let rowsPer = (h + bands - 1) / bands
+                                            DispatchQueue.concurrentPerform(iterations: bands) {
+                                                band in
+                                                let y0 = band * rowsPer,
+                                                    y1 = min(h, y0 + rowsPer)
+                                                if y0 >= y1 { return }
 
-                for y in y0..<y1 {
-                    let byv = Float(y) * 0.25
-                    let by0 = min(Int(byv), bh - 1)
-                    let by1 = min(by0 + 1, bh - 1)
-                    let byf = byv - Float(by0)
-                    let bloomRow0 = by0 * bw * 3, bloomRow1 = by1 * bw * 3
+                                                for y in y0..<y1 {
+                                                    let byv = Float(y) * 0.25
+                                                    let by0 = min(Int(byv), bh - 1)
+                                                    let by1 = min(by0 + 1, bh - 1)
+                                                    let byf = byv - Float(by0)
+                                                    let bloomRow0 = by0 * bw * 3,
+                                                        bloomRow1 = by1 * bw * 3
 
-                    let dyv = Float(y) - halfH
-                    let yq = dyv * dyv * invR2
+                                                    let dyv = Float(y) - halfH
+                                                    let yq = dyv * dyv * invR2
 
-                    let rowUp = max(y - 1, 0) * w
-                    let rowDown = min(y + 1, h - 1) * w
-                    let rowHere = y * w
+                                                    let rowUp = max(y - 1, 0) * w
+                                                    let rowDown = min(y + 1, h - 1) * w
+                                                    let rowHere = y * w
 
-                    let row = out.advanced(by: y * stride).assumingMemoryBound(to: UInt8.self)
+                                                    let row = out.advanced(by: y * stride)
+                                                        .assumingMemoryBound(to: UInt8.self)
 
-                    for x in 0..<w {
-                        let i = rowHere + x
-                        let o = i * 4
-                        let xl = max(x - 1, 0), xr = min(x + 1, w - 1)
+                                                    for x in 0..<w {
+                                                        let i = rowHere + x
+                                                        let o = i * 4
+                                                        let xl = max(x - 1, 0),
+                                                            xr = min(x + 1, w - 1)
 
-                        // Surface of the paint: its own thickness plus the weave
-                        // of the canvas showing through where it is thin.
-                        let scale: Float = 1.0 / 65535
-                        let gScale: Float = 1.0 / 255 * 0.16
-                        let hL = Float(rf[rowHere + xl]) * scale + Float(gr[rowHere + xl]) * gScale
-                        let hR = Float(rf[rowHere + xr]) * scale + Float(gr[rowHere + xr]) * gScale
-                        let hU = Float(rf[rowUp + x]) * scale + Float(gr[rowUp + x]) * gScale
-                        let hD = Float(rf[rowDown + x]) * scale + Float(gr[rowDown + x]) * gScale
+                                                        // Surface of the paint: its own thickness plus the weave
+                                                        // of the canvas showing through where it is thin.
+                                                        let scale: Float = 1.0 / 65535
+                                                        let gScale: Float = 1.0 / 255 * 0.16
+                                                        let hL =
+                                                            Float(rf[rowHere + xl]) * scale
+                                                            + Float(gr[rowHere + xl]) * gScale
+                                                        let hR =
+                                                            Float(rf[rowHere + xr]) * scale
+                                                            + Float(gr[rowHere + xr]) * gScale
+                                                        let hU =
+                                                            Float(rf[rowUp + x]) * scale
+                                                            + Float(gr[rowUp + x]) * gScale
+                                                        let hD =
+                                                            Float(rf[rowDown + x]) * scale
+                                                            + Float(gr[rowDown + x]) * gScale
 
-                        var nx = -(hR - hL) * relief2normal
-                        var ny = -(hD - hU) * relief2normal
-                        var nz: Float = 1
-                        let nlen = (nx * nx + ny * ny + 1).squareRoot()
-                        nx /= nlen; ny /= nlen; nz /= nlen
+                                                        var nx = -(hR - hL) * relief2normal
+                                                        var ny = -(hD - hU) * relief2normal
+                                                        var nz: Float = 1
+                                                        let nlen = (nx * nx + ny * ny + 1)
+                                                            .squareRoot()
+                                                        nx /= nlen; ny /= nlen; nz /= nlen
 
-                        let diffuse = max(nx * lx + ny * ly + nz * lz, 0)
-                        var spec = max(nx * hnx + ny * hny + nz * hnz, 0)
-                        spec = spec * spec; spec = spec * spec
-                        spec = spec * spec; spec = spec * spec   // ^16
-                        let thickness = min(Float(rf[i]) * scale * 3.2, 1)
-                        let specular = spec * 78 * thickness * lighting
+                                                        let diffuse = max(
+                                                            nx * lx + ny * ly + nz * lz, 0)
+                                                        var spec = max(
+                                                            nx * hnx + ny * hny + nz * hnz, 0)
+                                                        spec = spec * spec; spec = spec * spec
+                                                        // Raise to the sixteenth by repeated squaring.
+                                                        spec = spec * spec; spec = spec * spec
+                                                        let thickness = min(
+                                                            Float(rf[i]) * scale * 3.2, 1)
+                                                        let specular =
+                                                            spec * 78 * thickness * lighting
 
-                        // Ambient plus diffuse, normalised so an unlit flat area
-                        // keeps the photograph's own value.
-                        let shade = 0.80 + 0.34 * diffuse
+                                                        // Ambient plus diffuse, normalised so an unlit flat area
+                                                        // keeps the photograph's own value.
+                                                        let shade = 0.80 + 0.34 * diffuse
 
-                        let j0 = Int(xb0[x]) * 3, j1 = Int(xb1[x]) * 3
-                        let gx = xbf[x]
-                        let q = xvg[x] + yq
-                        let vig = 1 - vignetteAmount * q * q
-                        let bloomScale = bloomAmount * vig
+                                                        let j0 = Int(xb0[x]) * 3,
+                                                            j1 = Int(xb1[x]) * 3
+                                                        let gx = xbf[x]
+                                                        let q = xvg[x] + yq
+                                                        let vig = 1 - vignetteAmount * q * q
+                                                        let bloomScale = bloomAmount * vig
 
-                        var chan = (Float(0), Float(0), Float(0))
-                        for c in 0..<3 {
-                            let a = bl[bloomRow0 + j0 + c], b = bl[bloomRow0 + j1 + c]
-                            let cc = bl[bloomRow1 + j0 + c], d = bl[bloomRow1 + j1 + c]
-                            let t = a + (b - a) * gx
-                            let u = cc + (d - cc) * gx
-                            let value = (t + (u - t) * byf) * bloomScale
-                                + (Float(pt[o + c]) * (1.0 / 257) * shade
-                                   + Float(gl[o + c]) + specular) * vig
-                            switch c {
-                            case 0: chan.0 = value
-                            case 1: chan.1 = value
-                            default: chan.2 = value
+                                                        var chan = (
+                                                            Float(0), Float(0), Float(0)
+                                                        )
+                                                        for c in 0..<3 {
+                                                            let a = bl[bloomRow0 + j0 + c],
+                                                                b = bl[bloomRow0 + j1 + c]
+                                                            let cc = bl[bloomRow1 + j0 + c],
+                                                                d = bl[bloomRow1 + j1 + c]
+                                                            let t = a + (b - a) * gx
+                                                            let u = cc + (d - cc) * gx
+                                                            let value =
+                                                                (t + (u - t) * byf) * bloomScale
+                                                                + (Float(pt[o + c])
+                                                                    * (1.0 / 257) * shade
+                                                                    + Float(gl[o + c])
+                                                                    + specular) * vig
+                                                            switch c {
+                                                            case 0: chan.0 = value
+                                                            case 1: chan.1 = value
+                                                            default: chan.2 = value
+                                                            }
+                                                        }
+
+                                                        let p = x * 4
+                                                        row[p] = UInt8(min(max(chan.2, 0), 255))
+                                                        row[p + 1] = UInt8(
+                                                            min(max(chan.1, 0), 255))
+                                                        row[p + 2] = UInt8(
+                                                            min(max(chan.0, 0), 255))
+                                                        row[p + 3] = 255
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
-
-                        let p = x * 4
-                        row[p] = UInt8(min(max(chan.2, 0), 255))
-                        row[p + 1] = UInt8(min(max(chan.1, 0), 255))
-                        row[p + 2] = UInt8(min(max(chan.0, 0), 255))
-                        row[p + 3] = 255
                     }
                 }
             }
-        }}}}}}}}}
+        }
 
-        guard let provider = CGDataProvider(dataInfo: nil, data: out,
-                                            size: byteCount, releaseData: { _, _, _ in })
+        guard
+            let provider = CGDataProvider(
+                dataInfo: nil, data: out,
+                size: byteCount, releaseData: { _, _, _ in })
         else { return nil }
-        return CGImage(width: width, height: height,
-                       bitsPerComponent: 8, bitsPerPixel: 32,
-                       bytesPerRow: bytesPerRow,
-                       space: CGColorSpaceCreateDeviceRGB(),
-                       bitmapInfo: CGBitmapInfo(rawValue:
-                            CGImageAlphaInfo.noneSkipFirst.rawValue
-                            | CGBitmapInfo.byteOrder32Little.rawValue),
-                       provider: provider, decode: nil,
-                       shouldInterpolate: true, intent: .defaultIntent)
+        return CGImage(
+            width: width, height: height,
+            bitsPerComponent: 8, bitsPerPixel: 32,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(
+                rawValue:
+                    CGImageAlphaInfo.noneSkipFirst.rawValue
+                    | CGBitmapInfo.byteOrder32Little.rawValue),
+            provider: provider, decode: nil,
+            shouldInterpolate: true, intent: .defaultIntent)
+    }
+
+    /// Accumulated paint at a pixel, 0...1 per channel.
+    func paintColor(atX x: Int, y: Int) -> (Float, Float, Float) {
+        let o = (min(max(y, 0), height - 1) * width + min(max(x, 0), width - 1)) * 4
+        let inv: Float = 1.0 / 65535
+        return (Float(paint[o]) * inv, Float(paint[o + 1]) * inv, Float(paint[o + 2]) * inv)
+    }
+
+    /// FNV-1a over the paint buffer. Two runs of the same seed must agree.
+    func debugChecksum() -> UInt64 {
+        var h: UInt64 = 0xcbf2_9ce4_8422_2325
+        for v in paint {
+            h = (h ^ UInt64(v)) &* 0x100_0000_01b3
+        }
+        return h
     }
 
     func debugCoverageImage() -> CGImage? {
         var g = [UInt8](repeating: 0, count: coverW * coverH)
         for i in 0..<g.count { g[i] = UInt8(coverage[i] >> 8) }
         return g.withUnsafeMutableBytes { buf -> CGImage? in
-            guard let ctx = CGContext(data: buf.baseAddress,
-                                      width: coverW, height: coverH,
-                                      bitsPerComponent: 8, bytesPerRow: coverW,
-                                      space: CGColorSpaceCreateDeviceGray(),
-                                      bitmapInfo: CGImageAlphaInfo.none.rawValue)
+            guard
+                let ctx = CGContext(
+                    data: buf.baseAddress,
+                    width: coverW, height: coverH,
+                    bitsPerComponent: 8, bytesPerRow: coverW,
+                    space: CGColorSpaceCreateDeviceGray(),
+                    bitmapInfo: CGImageAlphaInfo.none.rawValue)
             else { return nil }
             return ctx.makeImage()
         }

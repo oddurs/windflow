@@ -10,7 +10,8 @@ final class Preferences {
     private let store: UserDefaults
 
     private init() {
-        store = ScreenSaverDefaults(forModuleWithName: Preferences.moduleName)
+        store =
+            ScreenSaverDefaults(forModuleWithName: Preferences.moduleName)
             ?? UserDefaults.standard
         store.register(defaults: [
             Key.density: 1.0,
@@ -44,27 +45,63 @@ final class Preferences {
     }
 
     /// Tracer count multiplier.
-    var density: Double { get { store.double(forKey: Key.density) } set { set(Key.density, newValue) } }
+    var density: Double {
+        get { store.double(forKey: Key.density) }
+        set { set(Key.density, newValue) }
+    }
     /// How fast the wind travels.
-    var speed: Double { get { store.double(forKey: Key.speed) } set { set(Key.speed, newValue) } }
+    var speed: Double {
+        get { store.double(forKey: Key.speed) }
+        set { set(Key.speed, newValue) }
+    }
     /// Streak length — the glow half-life.
-    var trail: Double { get { store.double(forKey: Key.trail) } set { set(Key.trail, newValue) } }
+    var trail: Double {
+        get { store.double(forKey: Key.trail) }
+        set { set(Key.trail, newValue) }
+    }
     /// Overall glyph coverage.
-    var exposure: Double { get { store.double(forKey: Key.exposure) } set { set(Key.exposure, newValue) } }
+    var exposure: Double {
+        get { store.double(forKey: Key.exposure) }
+        set { set(Key.exposure, newValue) }
+    }
     /// Time-varying wander, in radians.
-    var swirl: Double { get { store.double(forKey: Key.swirl) } set { set(Key.swirl, newValue) } }
+    var swirl: Double {
+        get { store.double(forKey: Key.swirl) }
+        set { set(Key.swirl, newValue) }
+    }
     /// 0 = hug the photo's structure exactly, 1 = let the open wind dominate.
-    var drift: Double { get { store.double(forKey: Key.drift) } set { set(Key.drift, newValue) } }
+    var drift: Double {
+        get { store.double(forKey: Key.drift) }
+        set { set(Key.drift, newValue) }
+    }
     /// Colour depth.
-    var saturation: Double { get { store.double(forKey: Key.saturation) } set { set(Key.saturation, newValue) } }
+    var saturation: Double {
+        get { store.double(forKey: Key.saturation) }
+        set { set(Key.saturation, newValue) }
+    }
     /// Halo around the brightest lines.
-    var bloom: Double { get { store.double(forKey: Key.bloom) } set { set(Key.bloom, newValue) } }
+    var bloom: Double {
+        get { store.double(forKey: Key.bloom) }
+        set { set(Key.bloom, newValue) }
+    }
     /// How strongly the light rakes across the thickness of the paint.
-    var relief: Double { get { store.double(forKey: Key.relief) } set { set(Key.relief, newValue) } }
+    var relief: Double {
+        get { store.double(forKey: Key.relief) }
+        set { set(Key.relief, newValue) }
+    }
     /// Roughly how many separate passages the picture is divided into.
-    var regions: Double { get { store.double(forKey: Key.regions) } set { set(Key.regions, newValue) } }
-    var secondsPerImage: Double { get { store.double(forKey: Key.secondsPerImage) } set { set(Key.secondsPerImage, newValue) } }
-    var shuffle: Bool { get { store.bool(forKey: Key.shuffle) } set { set(Key.shuffle, newValue) } }
+    var regions: Double {
+        get { store.double(forKey: Key.regions) }
+        set { set(Key.regions, newValue) }
+    }
+    var secondsPerImage: Double {
+        get { store.double(forKey: Key.secondsPerImage) }
+        set { set(Key.secondsPerImage, newValue) }
+    }
+    var shuffle: Bool {
+        get { store.bool(forKey: Key.shuffle) }
+        set { set(Key.shuffle, newValue) }
+    }
 
     private func set(_ key: String, _ value: Any) {
         store.set(value, forKey: key)

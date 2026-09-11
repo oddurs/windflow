@@ -26,8 +26,10 @@ struct Segmentation {
     /// Cells where the region changes. Strokes aimed here describe the shapes.
     let boundary: [Int32]
 
-    init(r: [Float], g: [Float], b: [Float], cols: Int, rows: Int,
-         targetRegions: Int, compactness: Float) {
+    init(
+        r: [Float], g: [Float], b: [Float], cols: Int, rows: Int,
+        targetRegions: Int, compactness: Float
+    ) {
         self.cols = cols
         self.rows = rows
         let n = cols * rows
@@ -80,7 +82,8 @@ struct Segmentation {
                         let i = row + x
                         let dr = r[i] - ccr, dg = g[i] - ccg, db = b[i] - ccb
                         let dx = (Float(x) - ccx) * invSpacing
-                        let d = (dr * dr + dg * dg + db * db) * colourWeight
+                        let d =
+                            (dr * dr + dg * dg + db * db) * colourWeight
                             + dx * dx + dy2
                         if d < best[i] { best[i] = d; assign[i] = Int32(c) }
                     }
@@ -121,7 +124,8 @@ struct Segmentation {
                 let i = row + x
                 let l = assign[i]
                 if assign[i - 1] != l || assign[i + 1] != l
-                    || assign[i - cols] != l || assign[i + cols] != l {
+                    || assign[i - cols] != l || assign[i + cols] != l
+                {
                     edges.append(Int32(i))
                 }
             }

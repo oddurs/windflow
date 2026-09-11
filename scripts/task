@@ -1,0 +1,81 @@
+#!/bin/sh
+# The seam. CI, the git hooks and scripts/agent know only these verbs, so a
+# local check and a CI job cannot drift apart.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+
+SWIFT_FORMAT="xcrun swift-format"
+SOURCES="Sources"
+
+usage() {
+    echo "usage: scripts/task <fmt|fmt:check|lint|test|build|check>" >&2
+    exit 2
+}
+
+swift_files() {
+    find "$SOURCES" -name '*.swift' -type f | sort
+}
+
+do_fmt() {
+    echo "==> fmt"
+    $SWIFT_FORMAT format --parallel --in-place --recursive "$SOURCES"
+}
+
+do_fmt_check() {
+    echo "==> fmt:check"
+    status=0
+    for file in $(swift_files); do
+        if ! $SWIFT_FORMAT format "$file" | diff -q - "$file" >/dev/null; then
+            echo "needs formatting: $file" >&2
+            status=1
+        fi
+    done
+    [ "$status" -eq 0 ] || echo "run: scripts/task fmt" >&2
+    return $status
+}
+
+do_lint() {
+    echo "==> lint"
+    $SWIFT_FORMAT lint --parallel --strict --recursive "$SOURCES"
+}
+
+do_test() {
+    echo "==> test"
+    mkdir -p build
+    # shellcheck disable=SC2046
+    swiftc -O -swift-version 5 -module-name Windflow \
+        -framework ScreenSaver -framework AppKit \
+        -target "$(uname -m)-apple-macos13.0" \
+        -o build/windflow-tests \
+        $(find "$SOURCES/Windflow" -name '*.swift' | sort) "$SOURCES/Tests/main.swift"
+    build/windflow-tests
+}
+
+do_build() {
+    echo "==> build"
+    "$ROOT/scripts/build.sh"
+}
+
+[ $# -ge 1 ] || usage
+
+case "$1" in
+    fmt) do_fmt ;;
+    fmt:check) do_fmt_check ;;
+    lint) do_lint ;;
+    test) do_test ;;
+    build) do_build ;;
+    check)
+        # Deliberately not an && chain: a failing command at the head of one is
+        # exempt from set -e, so the chain short-circuits and the success line
+        # below still runs. Sequential statements each get the exit-on-error.
+        do_fmt_check
+        do_lint
+        do_test
+        do_build
+        echo
+        echo "check: PASS"
+        ;;
+    *) usage ;;
+esac

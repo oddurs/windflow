@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import ScreenSaver
 
 @objc(WindflowView)
@@ -75,11 +75,13 @@ public final class WindflowView: ScreenSaverView {
         lastFrameTime = now
 
         simulation.step(dt: dt)
-        if let image = canvas.present(fade: simulation.fadeFactor(dt: dt),
-                                      reliefKeep: simulation.reliefFactor(dt: dt),
-                                      bloomAmount: simulation.tuning.bloom,
-                                      vignetteAmount: 0.12,
-                                      lighting: simulation.tuning.relief) {
+        if let image = canvas.present(
+            fade: simulation.fadeFactor(dt: dt),
+            reliefKeep: simulation.reliefFactor(dt: dt),
+            bloomAmount: simulation.tuning.bloom,
+            vignetteAmount: 0.12,
+            lighting: simulation.tuning.relief)
+        {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer?.contents = image
@@ -157,8 +159,9 @@ public final class WindflowView: ScreenSaverView {
         loadQueue.async { [weak self] in
             let image = url.flatMap { ImageLibrary.load($0) } ?? ProceduralImage.make()
             let prepared = image.map {
-                PreparedImage.prepare(image: $0, canvasWidth: w, canvasHeight: h,
-                                      coverW: coverW, coverH: coverH, settings: settings)
+                PreparedImage.prepare(
+                    image: $0, canvasWidth: w, canvasHeight: h,
+                    coverW: coverW, coverH: coverH, settings: settings)
             }
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -173,11 +176,13 @@ public final class WindflowView: ScreenSaverView {
     public func advanceImage() {
         guard let canvas else { return }
         if let prepared = pending,
-           prepared.canvasWidth == canvas.width, prepared.canvasHeight == canvas.height {
+            prepared.canvasWidth == canvas.width, prepared.canvasHeight == canvas.height
+        {
             pending = nil
-            simulation = Simulation.begin(prepared, canvas: canvas,
-                                          settings: SimulationSettings(prefs: Preferences.shared),
-                                          preview: isPreview)
+            simulation = Simulation.begin(
+                prepared, canvas: canvas,
+                settings: SimulationSettings(prefs: Preferences.shared),
+                preview: isPreview)
         } else {
             pending = nil
             simulation = nil

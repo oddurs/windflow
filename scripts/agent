@@ -1,0 +1,142 @@
+#!/bin/sh
+# One unit of work, one worktree, one branch, one pull request.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+MAIN_WORKTREE=$(git -C "$ROOT" worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+
+say() { echo "==> $*"; }
+die() { echo "error: $*" >&2; exit 1; }
+
+default_branch() {
+    # Resolve from the remote rather than hardcoding, and fall back for a repo
+    # that has not been pushed yet. Assigning first rather than piping: a failing
+    # git in a pipeline still exits 0 through sed, which would report success
+    # with an empty answer.
+    resolved=$(git -C "$MAIN_WORKTREE" symbolic-ref --quiet --short \
+        refs/remotes/origin/HEAD 2>/dev/null || true)
+    if [ -n "$resolved" ]; then
+        echo "${resolved#origin/}"
+        return 0
+    fi
+    for candidate in main master; do
+        git -C "$MAIN_WORKTREE" show-ref --verify --quiet "refs/heads/$candidate" && {
+            echo "$candidate"; return 0
+        }
+    done
+    git -C "$MAIN_WORKTREE" rev-parse --abbrev-ref HEAD
+}
+
+repo_name() {
+    # From the remote, so the worktree path does not depend on what the working
+    # copy's directory happens to be called.
+    url=$(git -C "$MAIN_WORKTREE" remote get-url origin 2>/dev/null || true)
+    if [ -n "$url" ]; then
+        basename "$url" .git
+    else
+        basename "$MAIN_WORKTREE"
+    fi
+}
+
+worktree_dir() {
+    echo "$(dirname -- "$MAIN_WORKTREE")/.worktrees/$(repo_name)/$(echo "$1" | tr '/' '-')"
+}
+
+cmd_doctor() {
+    say "doctor"
+    echo "repo:           $(repo_name)"
+    echo "main worktree:  $MAIN_WORKTREE"
+    echo "default branch: $(default_branch)"
+    echo "hooks path:     $(git -C "$MAIN_WORKTREE" config core.hooksPath || echo '(unset — run scripts/setup)')"
+    echo "remote:         $(git -C "$MAIN_WORKTREE" remote get-url origin 2>/dev/null || echo '(none)')"
+    echo "branch here:    $(git rev-parse --abbrev-ref HEAD)"
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "working tree:   dirty"
+    else
+        echo "working tree:   clean"
+    fi
+    command -v gh >/dev/null 2>&1 && echo "gh:             $(gh --version | head -1)" \
+        || echo "gh:             (not installed — 'pr' will print the URL instead)"
+}
+
+cmd_start() {
+    [ $# -ge 1 ] || die "usage: scripts/agent start <type>/<slug>"
+    branch=$1
+    echo "$branch" | grep -Eq '^(feat|fix|chore|docs|perf|refactor|test)/[a-z0-9][a-z0-9._-]*$' \
+        || die "branch must be <type>/<slug>, type one of feat fix chore docs perf refactor test"
+
+    base=$(default_branch)
+    dir=$(worktree_dir "$branch")
+    if [ -d "$dir" ]; then
+        say "worktree already exists"
+    else
+        say "fetching $base"
+        git -C "$MAIN_WORKTREE" fetch --quiet origin "$base" 2>/dev/null || true
+        say "worktree $dir on $branch"
+        mkdir -p "$(dirname -- "$dir")"
+        if git -C "$MAIN_WORKTREE" show-ref --verify --quiet "refs/heads/$branch"; then
+            git -C "$MAIN_WORKTREE" worktree add "$dir" "$branch"
+        else
+            git -C "$MAIN_WORKTREE" worktree add -b "$branch" "$dir" "$base"
+        fi
+    fi
+    echo
+    echo "cd $dir"
+}
+
+cmd_check() { "$ROOT/scripts/task" check; }
+
+cmd_commit() {
+    [ $# -ge 1 ] || die "usage: scripts/agent commit <message>"
+    git add -A
+    git commit -m "$1"
+}
+
+cmd_pr() {
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    base=$(default_branch)
+    [ "$branch" != "$base" ] || die "refusing: $base advances only through a merged pull request"
+    say "push $branch"
+    git push -u origin "$branch"
+    if command -v gh >/dev/null 2>&1; then
+        say "opening pull request"
+        gh pr create --base "$base" --head "$branch" --fill
+    else
+        echo "open a pull request for $branch against $base"
+    fi
+}
+
+cmd_sync() {
+    base=$(default_branch)
+    say "rebase on origin/$base"
+    git fetch origin "$base"
+    git rebase "origin/$base"
+}
+
+cmd_done() {
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    dir=$(git rev-parse --show-toplevel)
+    [ "$dir" != "$MAIN_WORKTREE" ] || die "not in a task worktree"
+    say "removing worktree $dir"
+    cd "$MAIN_WORKTREE"
+    git worktree remove --force "$dir"
+    git branch -D "$branch" 2>/dev/null || true
+    git worktree prune
+}
+
+cmd_list() { git -C "$MAIN_WORKTREE" worktree list; }
+
+[ $# -ge 1 ] || { echo "usage: scripts/agent <doctor|start|check|commit|pr|sync|done|list>" >&2; exit 2; }
+command=$1
+shift
+case "$command" in
+    doctor) cmd_doctor "$@" ;;
+    start)  cmd_start "$@" ;;
+    check)  cmd_check "$@" ;;
+    commit) cmd_commit "$@" ;;
+    pr)     cmd_pr "$@" ;;
+    sync)   cmd_sync "$@" ;;
+    done)   cmd_done "$@" ;;
+    list)   cmd_list "$@" ;;
+    *) echo "unknown command: $command" >&2; exit 2 ;;
+esac

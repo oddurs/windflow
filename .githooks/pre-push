@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+remote=$1
+default=$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null | sed "s|^$remote/||" || echo main)
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    case "$remote_ref" in
+        "refs/heads/$default")
+            # Allow only the push that creates the branch on the remote.
+            if git ls-remote --exit-code --heads "$remote" "$default" >/dev/null 2>&1; then
+                echo "pre-push: $default advances only through a merged pull request" >&2
+                exit 1
+            fi
+            ;;
+    esac
+    [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+done
+
+exec ./scripts/task check

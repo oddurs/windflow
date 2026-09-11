@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -13,8 +13,9 @@ import UniformTypeIdentifiers
 enum ImageLibrary {
 
     static var folder: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                            in: .userDomainMask)[0]
+        let base = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask)[0]
         let dir = base.appendingPathComponent("Windflow/Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
@@ -25,12 +26,17 @@ enum ImageLibrary {
     ]
 
     static func urls() -> [URL] {
-        let items = (try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles])) ?? []
-        return items
+        let items =
+            (try? FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles])) ?? []
+        return
+            items
             .filter { allowedExtensions.contains($0.pathExtension.lowercased()) }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            .sorted {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
+                    == .orderedAscending
+            }
     }
 
     @discardableResult

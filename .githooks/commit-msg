@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+msg_file=$1
+subject=$(head -1 "$msg_file")
+
+case "$subject" in
+    Merge*|Revert*|fixup!*|squash!*|amend!*) exit 0 ;;
+esac
+
+if ! printf '%s' "$subject" | grep -Eq '^(feat|fix|chore|docs|perf|refactor|test|build|ci|style)(\([a-z0-9._/-]+\))?!?: .+'; then
+    echo "commit-msg: subject must be a Conventional Commit" >&2
+    echo "  got: $subject" >&2
+    exit 1
+fi
+if [ "${#subject}" -gt 72 ]; then
+    echo "commit-msg: subject is ${#subject} characters, limit is 72" >&2
+    exit 1
+fi
+case "$subject" in
+    *.) echo "commit-msg: subject must not end with a period" >&2; exit 1 ;;
+esac
+if grep -Eiq 'co-authored-by:.*(claude|anthropic|copilot|assistant)|generated with|🤖' "$msg_file"; then
+    echo "commit-msg: remove the assistant attribution" >&2
+    exit 1
+fi

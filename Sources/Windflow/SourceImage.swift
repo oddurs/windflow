@@ -1,6 +1,6 @@
-import Foundation
 import AppKit
 import CoreGraphics
+import Foundation
 
 /// Everything derived from one photograph that the painting reads but never
 /// writes: the graded colour, its pyramid, and where the fine detail is.
@@ -15,9 +15,9 @@ final class SourceImage {
     let width: Int
     let height: Int
 
-    let level0: [UInt8]          // full resolution, sharp
-    let level1: [UInt8]          // half resolution, softened
-    let level2: [UInt8]          // quarter resolution, softer still
+    let level0: [UInt8]  // full resolution, sharp
+    let level1: [UInt8]  // half resolution, softened
+    let level2: [UInt8]  // quarter resolution, softer still
     let mid1W: Int, mid1H: Int
     let mid2W: Int, mid2H: Int
 
@@ -27,8 +27,10 @@ final class SourceImage {
     let detailX: [Float]
     let detailY: [Float]
 
-    init(image: CGImage, width: Int, height: Int, saturation: Float,
-         coverW: Int, coverH: Int) {
+    init(
+        image: CGImage, width: Int, height: Int, saturation: Float,
+        coverW: Int, coverH: Int
+    ) {
         self.width = width
         self.height = height
         mid1W = max(2, width / 2); mid1H = max(2, height / 2)
@@ -36,11 +38,13 @@ final class SourceImage {
 
         var raw = [UInt8](repeating: 0, count: width * height * 4)
         raw.withUnsafeMutableBytes { buf in
-            guard let ctx = CGContext(data: buf.baseAddress,
-                                      width: width, height: height,
-                                      bitsPerComponent: 8, bytesPerRow: width * 4,
-                                      space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            guard
+                let ctx = CGContext(
+                    data: buf.baseAddress,
+                    width: width, height: height,
+                    bitsPerComponent: 8, bytesPerRow: width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
             else { return }
             ctx.interpolationQuality = .high
             ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
@@ -48,9 +52,12 @@ final class SourceImage {
             let iw = CGFloat(image.width), ih = CGFloat(image.height)
             let scale = max(CGFloat(width) / iw, CGFloat(height) / ih)
             let dw = iw * scale, dh = ih * scale
-            ctx.draw(image, in: CGRect(x: (CGFloat(width) - dw) / 2,
-                                       y: (CGFloat(height) - dh) / 2,
-                                       width: dw, height: dh))
+            ctx.draw(
+                image,
+                in: CGRect(
+                    x: (CGFloat(width) - dw) / 2,
+                    y: (CGFloat(height) - dh) / 2,
+                    width: dw, height: dh))
         }
 
         var l0 = [UInt8](repeating: 0, count: width * height * 4)
@@ -98,8 +105,9 @@ final class SourceImage {
                         let x = cx * 8 + ox
                         if x >= width { break }
                         let o = (y * width + x) * 4
-                        let lum = (0.2126 * Float(l0[o]) + 0.7152 * Float(l0[o + 1])
-                                   + 0.0722 * Float(l0[o + 2])) * inv
+                        let lum =
+                            (0.2126 * Float(l0[o]) + 0.7152 * Float(l0[o + 1])
+                                + 0.0722 * Float(l0[o + 2])) * inv
                         lo = min(lo, lum); hi = max(hi, lum)
                     }
                 }
@@ -118,8 +126,10 @@ final class SourceImage {
         detailX = dx; detailY = dy
     }
 
-    private static func downsample(_ src: [UInt8], sw: Int, sh: Int,
-                                   into dst: inout [UInt8], dw: Int, dh: Int) {
+    private static func downsample(
+        _ src: [UInt8], sw: Int, sh: Int,
+        into dst: inout [UInt8], dw: Int, dh: Int
+    ) {
         for y in 0..<dh {
             let sy0 = min(y * 2, sh - 1), sy1 = min(y * 2 + 1, sh - 1)
             for x in 0..<dw {
@@ -143,19 +153,25 @@ final class SourceImage {
         for c in 0..<3 {
             for y in 0..<h {
                 var acc = 0
-                for k in -radius...radius { acc += Int(buf[(y * w + min(max(k, 0), w - 1)) * 4 + c]) }
+                for k in -radius...radius {
+                    acc += Int(buf[(y * w + min(max(k, 0), w - 1)) * 4 + c])
+                }
                 for x in 0..<w {
                     tmp[(y * w + x) * 4 + c] = UInt8(acc / span)
-                    acc += Int(buf[(y * w + min(x + radius + 1, w - 1)) * 4 + c])
+                    acc +=
+                        Int(buf[(y * w + min(x + radius + 1, w - 1)) * 4 + c])
                         - Int(buf[(y * w + max(x - radius, 0)) * 4 + c])
                 }
             }
             for x in 0..<w {
                 var acc = 0
-                for k in -radius...radius { acc += Int(tmp[(min(max(k, 0), h - 1) * w + x) * 4 + c]) }
+                for k in -radius...radius {
+                    acc += Int(tmp[(min(max(k, 0), h - 1) * w + x) * 4 + c])
+                }
                 for y in 0..<h {
                     buf[(y * w + x) * 4 + c] = UInt8(acc / span)
-                    acc += Int(tmp[(min(y + radius + 1, h - 1) * w + x) * 4 + c])
+                    acc +=
+                        Int(tmp[(min(y + radius + 1, h - 1) * w + x) * 4 + c])
                         - Int(tmp[(max(y - radius, 0) * w + x) * 4 + c])
                 }
             }
