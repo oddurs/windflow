@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 /// The moving part: a swarm of tracers advected through the flow field, each one
 /// dragging a brush loaded with colour taken from the photograph.
@@ -100,7 +100,8 @@ final class Simulation {
         self.rng = UInt64(seed) &* 0x9E37_79B9_7F4A_7C15 | 1
         baseSpeed = Float(canvas.width) * 0.055 * tuning.speed
 
-        let wanted = Float(canvas.width * canvas.height) / 900 * tuning.density
+        let wanted =
+            Float(canvas.width * canvas.height) / 900 * tuning.density
             * (preview ? 0.4 : 1.0)
         let count = min(max(Int(wanted), 900), 60000)
         tracers = [Tracer](repeating: Tracer(), count: count)
@@ -148,8 +149,10 @@ final class Simulation {
         // Candidates come from the overscanned region, so lines blow in over the
         // edges instead of the frame having an unpainted border.
         @inline(__always) func candidate() -> (Float, Float) {
-            (nextFloat() * (Float(canvas.width) + canvas.marginX * 2) - canvas.marginX,
-             nextFloat() * (Float(canvas.height) + canvas.marginY * 2) - canvas.marginY)
+            (
+                nextFloat() * (Float(canvas.width) + canvas.marginX * 2) - canvas.marginX,
+                nextFloat() * (Float(canvas.height) + canvas.marginY * 2) - canvas.marginY
+            )
         }
         var (x, y) = candidate()
         var onBoundary = false
@@ -159,26 +162,30 @@ final class Simulation {
             // to describe. Scattering them evenly leaves the detailed regions
             // mushy and wastes the work on an even sky.
             if t.level == 0 && roll < 0.50 && !canvas.detailX.isEmpty {
-                let k = min(Int(nextFloat() * Float(canvas.detailX.count)),
-                            canvas.detailX.count - 1)
+                let k = min(
+                    Int(nextFloat() * Float(canvas.detailX.count)),
+                    canvas.detailX.count - 1)
                 x = canvas.detailX[k] + (nextFloat() - 0.5) * 9
                 y = canvas.detailY[k] + (nextFloat() - 0.5) * 9
             } else if roll < 0.72 && !canvas.holeX.isEmpty {
                 // Straight into a known hole, jittered within its cell so the
                 // tracers that land there do not all trace one streamline.
-                let k = min(Int(nextFloat() * Float(canvas.holeX.count)),
-                            canvas.holeX.count - 1)
+                let k = min(
+                    Int(nextFloat() * Float(canvas.holeX.count)),
+                    canvas.holeX.count - 1)
                 x = canvas.holeX[k] + (nextFloat() - 0.5) * 9
                 y = canvas.holeY[k] + (nextFloat() - 0.5) * 9
             } else if roll < 0.84 && !field.regions.boundary.isEmpty {
                 // On a seam between passages. These are the strokes that state
                 // where one shape stops and the next begins.
                 let e = field.regions.boundary[
-                    min(Int(nextFloat() * Float(field.regions.boundary.count)),
+                    min(
+                        Int(nextFloat() * Float(field.regions.boundary.count)),
                         field.regions.boundary.count - 1)]
                 let fx = Float(Int(e) % field.cols), fy = Float(Int(e) / field.cols)
-                let (bx, by) = canvas.canvasPoint(fieldX: fx, fieldY: fy,
-                                                  cols: field.cols, rows: field.rows)
+                let (bx, by) = canvas.canvasPoint(
+                    fieldX: fx, fieldY: fy,
+                    cols: field.cols, rows: field.rows)
                 x = bx + (nextFloat() - 0.5) * 6
                 y = by + (nextFloat() - 0.5) * 6
                 onBoundary = true
@@ -273,7 +280,8 @@ final class Simulation {
             if p.age >= p.life
                 || p.x < -canvas.marginX - 4 || p.y < -canvas.marginY - 4
                 || p.x > Float(canvas.width) + canvas.marginX + 4
-                || p.y > Float(canvas.height) + canvas.marginY + 4 {
+                || p.y > Float(canvas.height) + canvas.marginY + 4
+            {
                 tracers[i] = spawn(biasToUncovered: true)
                 continue
             }
@@ -287,7 +295,8 @@ final class Simulation {
 
             p.checkClock += dt
             if p.checkClock > 0.6 {
-                let moved = (p.x - p.checkX) * (p.x - p.checkX)
+                let moved =
+                    (p.x - p.checkX) * (p.x - p.checkX)
                     + (p.y - p.checkY) * (p.y - p.checkY)
                 if moved < stallDistanceSquared {
                     tracers[i] = spawn(biasToUncovered: true)
@@ -302,21 +311,24 @@ final class Simulation {
             let envelope = smoothstep(0, 0.10, u) * (1 - smoothstep(0.74, 1, u))
 
             let (fx0, fy0) = canvas.fieldCoordinate(x: p.x, y: p.y, cols: cols, rows: rows)
-            let (_, _, coh0) = field.flow(atX: fx0, y: fy0, time: time, swirl: swirl, seed: seed)
+            let (_, _, coh0) = field.flow(
+                atX: fx0, y: fy0, time: time, swirl: swirl, seed: seed)
             let travel = baseSpeed * p.pace * (0.45 + 1.2 * coh0) * dt
             let steps = min(max(Int(travel / 0.5) + 1, 1), 14)
             let sub = dt / Float(steps)
 
             for _ in 0..<steps {
                 let (sx, sy) = canvas.fieldCoordinate(x: p.x, y: p.y, cols: cols, rows: rows)
-                let (dx, dy, c) = field.flow(atX: sx, y: sy, time: time, swirl: swirl, seed: seed)
+                let (dx, dy, c) = field.flow(
+                    atX: sx, y: sy, time: time, swirl: swirl, seed: seed)
                 let v = baseSpeed * p.pace * (0.45 + 1.2 * c)
 
                 // Midpoint step: visibly smoother through tight curvature.
                 let mx = p.x + dx * v * sub * 0.5
                 let my = p.y + dy * v * sub * 0.5
                 let (mfx, mfy) = canvas.fieldCoordinate(x: mx, y: my, cols: cols, rows: rows)
-                let (ex, ey, _) = field.flow(atX: mfx, y: mfy, time: time, swirl: swirl, seed: seed)
+                let (ex, ey, _) = field.flow(
+                    atX: mfx, y: mfy, time: time, swirl: swirl, seed: seed)
 
                 let cross = p.drift * crossSpeed * sub * (1 - 0.45 * c)
                 let stepX = ex * v * sub - ey * cross
@@ -331,8 +343,9 @@ final class Simulation {
                 // from where strokes *end* and from the change of direction and
                 // palette across the join — never from withholding paint, which
                 // only draws a dark line around every shape.
-                let (lfx, lfy) = canvas.fieldCoordinate(x: p.x, y: p.y,
-                                                        cols: cols, rows: rows)
+                let (lfx, lfy) = canvas.fieldCoordinate(
+                    x: p.x, y: p.y,
+                    cols: cols, rows: rows)
                 if field.label(atX: lfx, y: lfy) != p.home {
                     p.strayed += distance
                 } else {
@@ -408,9 +421,10 @@ final class Simulation {
                             bb += (lb - bb) * mixLocal
                         }
 
-                        canvas.paintDab(x: ox, y: oy, r: br, g: bg, b: bb,
-                                        alpha: a * profile,
-                                        thickness: a * profile * 0.34)
+                        canvas.paintDab(
+                            x: ox, y: oy, r: br, g: bg, b: bb,
+                            alpha: a * profile,
+                            thickness: a * profile * 0.34)
                     }
                 }
 
@@ -423,9 +437,10 @@ final class Simulation {
                 // that the photograph is not supposed to have.
                 let m = max(sr, max(sg, sb))
                 let lift: Float = m > 0.02 ? min(0.75 / m, 1.9) : 1
-                canvas.addGlow(x: p.x, y: p.y,
-                               r: sr * lift, g: sg * lift, b: sb * lift,
-                               intensity: glowPerStep * envelope * glowScale)
+                canvas.addGlow(
+                    x: p.x, y: p.y,
+                    r: sr * lift, g: sg * lift, b: sb * lift,
+                    intensity: glowPerStep * envelope * glowScale)
             }
 
             tracers[i] = p
@@ -494,24 +509,32 @@ struct PreparedImage {
     let canvasWidth: Int
     let canvasHeight: Int
 
-    static func prepare(image: CGImage, canvasWidth: Int, canvasHeight: Int,
-                        coverW: Int, coverH: Int,
-                        settings: SimulationSettings) -> PreparedImage {
-        let seed = UInt32.random(in: 1...UInt32.max)
-        let source = SourceImage(image: image, width: canvasWidth, height: canvasHeight,
-                                 saturation: settings.saturation,
-                                 coverW: coverW, coverH: coverH)
+    /// `seed` fixes every random choice the painting makes, so a render is
+    /// reproducible. The screensaver leaves it nil and gets a fresh one.
+    static func prepare(
+        image: CGImage, canvasWidth: Int, canvasHeight: Int,
+        coverW: Int, coverH: Int,
+        settings: SimulationSettings,
+        seed explicitSeed: UInt32? = nil
+    ) -> PreparedImage {
+        let seed = explicitSeed ?? UInt32.random(in: 1...UInt32.max)
+        let source = SourceImage(
+            image: image, width: canvasWidth, height: canvasHeight,
+            saturation: settings.saturation,
+            coverW: coverW, coverH: coverH)
         // The field is deliberately coarser than the canvas: it is a smooth
         // field, and resolving it finer only gives the tracers noise to jitter
         // against. It shares the canvas aspect, so it covers exactly the same
         // overscanned region as the colour source.
         let cols = max(64, canvasWidth / 3)
         let rows = max(36, canvasHeight / 3)
-        let field = FlowField(image: image, cols: cols, rows: rows, aspect: 1,
-                              seed: seed, drift: settings.drift,
-                              regionCount: max(6, Int(settings.regions)))
-        return PreparedImage(source: source, field: field, seed: seed,
-                             canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        let field = FlowField(
+            image: image, cols: cols, rows: rows, aspect: 1,
+            seed: seed, drift: settings.drift,
+            regionCount: max(6, Int(settings.regions)))
+        return PreparedImage(
+            source: source, field: field, seed: seed,
+            canvasWidth: canvasWidth, canvasHeight: canvasHeight)
     }
 }
 
@@ -519,8 +542,10 @@ extension Simulation {
     /// Hand a prepared photograph to the canvas and start painting it. This part
     /// touches shared state, so it belongs on the render thread — but it is only
     /// a couple of reference assignments and a buffer clear.
-    static func begin(_ prepared: PreparedImage, canvas: Canvas,
-                      settings: SimulationSettings, preview: Bool) -> Simulation {
+    static func begin(
+        _ prepared: PreparedImage, canvas: Canvas,
+        settings: SimulationSettings, preview: Bool
+    ) -> Simulation {
         canvas.adopt(prepared.source)
         canvas.reset()
         var tuning = Tuning()
@@ -533,7 +558,8 @@ extension Simulation {
         tuning.relief = settings.relief
         tuning.totalSeconds = settings.secondsPerImage
         tuning.revealTimeout = max(20, settings.secondsPerImage * 0.85)
-        return Simulation(field: prepared.field, canvas: canvas, tuning: tuning,
-                          seed: prepared.seed, preview: preview)
+        return Simulation(
+            field: prepared.field, canvas: canvas, tuning: tuning,
+            seed: prepared.seed, preview: preview)
     }
 }
