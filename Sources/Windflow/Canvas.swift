@@ -444,38 +444,64 @@ final class Canvas {
         blurBloom(radius: 4)
     }
 
+    /// Separable box blur over the bloom buffer.
+    ///
+    /// The two passes are separate methods with explicit signatures rather than
+    /// index arithmetic inlined into nested closures. Written that way, the
+    /// expression is large enough that some Swift toolchains give up type-checking
+    /// it — it compiles locally and fails on CI, which is the worst way to find out.
     private func blurBloom(radius: Int) {
-        let bw = bloomW, bh = bloomH
+        let bw = bloomW
+        let bh = bloomH
+        let inv = 1 / Float(radius * 2 + 1)
         bloom.withUnsafeMutableBufferPointer { src in
             bloomScratch.withUnsafeMutableBufferPointer { dst in
-                let inv = 1 / Float(radius * 2 + 1)
-                for y in 0..<bh {
-                    for c in 0..<3 {
-                        var acc: Float = 0
-                        for k in -radius...radius {
-                            acc += src[(y * bw + min(max(k, 0), bw - 1)) * 3 + c]
-                        }
-                        for x in 0..<bw {
-                            dst[(y * bw + x) * 3 + c] = acc * inv
-                            acc +=
-                                src[(y * bw + min(x + radius + 1, bw - 1)) * 3 + c]
-                                - src[(y * bw + max(x - radius, 0)) * 3 + c]
-                        }
-                    }
+                Canvas.blurRows(src: src, dst: dst, bw: bw, bh: bh, radius: radius, inv: inv)
+                Canvas.blurColumns(src: dst, dst: src, bw: bw, bh: bh, radius: radius, inv: inv)
+            }
+        }
+    }
+
+    private static func blurRows(
+        src: UnsafeMutableBufferPointer<Float>, dst: UnsafeMutableBufferPointer<Float>,
+        bw: Int, bh: Int, radius: Int, inv: Float
+    ) {
+        for y in 0..<bh {
+            let row = y * bw
+            for c in 0..<3 {
+                var acc: Float = 0
+                for k in -radius...radius {
+                    let x = min(max(k, 0), bw - 1)
+                    acc += src[(row + x) * 3 + c]
                 }
                 for x in 0..<bw {
-                    for c in 0..<3 {
-                        var acc: Float = 0
-                        for k in -radius...radius {
-                            acc += dst[(min(max(k, 0), bh - 1) * bw + x) * 3 + c]
-                        }
-                        for y in 0..<bh {
-                            src[(y * bw + x) * 3 + c] = acc * inv
-                            acc +=
-                                dst[(min(y + radius + 1, bh - 1) * bw + x) * 3 + c]
-                                - dst[(max(y - radius, 0) * bw + x) * 3 + c]
-                        }
-                    }
+                    dst[(row + x) * 3 + c] = acc * inv
+                    let incoming = min(x + radius + 1, bw - 1)
+                    let outgoing = max(x - radius, 0)
+                    acc += src[(row + incoming) * 3 + c]
+                    acc -= src[(row + outgoing) * 3 + c]
+                }
+            }
+        }
+    }
+
+    private static func blurColumns(
+        src: UnsafeMutableBufferPointer<Float>, dst: UnsafeMutableBufferPointer<Float>,
+        bw: Int, bh: Int, radius: Int, inv: Float
+    ) {
+        for x in 0..<bw {
+            for c in 0..<3 {
+                var acc: Float = 0
+                for k in -radius...radius {
+                    let y = min(max(k, 0), bh - 1)
+                    acc += src[(y * bw + x) * 3 + c]
+                }
+                for y in 0..<bh {
+                    dst[(y * bw + x) * 3 + c] = acc * inv
+                    let incoming = min(y + radius + 1, bh - 1)
+                    let outgoing = max(y - radius, 0)
+                    acc += src[(incoming * bw + x) * 3 + c]
+                    acc -= src[(outgoing * bw + x) * 3 + c]
                 }
             }
         }
