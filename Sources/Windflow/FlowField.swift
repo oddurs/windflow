@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 /// Everything the simulation needs to know about one photograph, resampled onto
 /// the character grid.
@@ -41,8 +41,10 @@ final class FlowField {
     /// Cell height divided by cell width, typically about 1.8.
     let aspect: Float
 
-    init(image: CGImage, cols: Int, rows: Int, aspect: Float,
-         seed: UInt32, drift: Float, regionCount: Int) {
+    init(
+        image: CGImage, cols: Int, rows: Int, aspect: Float,
+        seed: UInt32, drift: Float, regionCount: Int
+    ) {
         self.cols = max(cols, 2)
         self.rows = max(rows, 2)
         self.aspect = max(aspect, 0.05)
@@ -57,9 +59,10 @@ final class FlowField {
         coherence = [Float](repeating: 0, count: n)
 
         sample(image: image)
-        regions = Segmentation(r: red, g: green, b: blue,
-                               cols: self.cols, rows: self.rows,
-                               targetRegions: regionCount, compactness: 4.6)
+        regions = Segmentation(
+            r: red, g: green, b: blue,
+            cols: self.cols, rows: self.rows,
+            targetRegions: regionCount, compactness: 4.6)
         buildFlow(seed: seed, drift: drift)
     }
 
@@ -71,10 +74,13 @@ final class FlowField {
         let space = CGColorSpaceCreateDeviceRGB()
         let info = CGImageAlphaInfo.premultipliedLast.rawValue
         raw.withUnsafeMutableBytes { buf in
-            guard let ctx = CGContext(data: buf.baseAddress,
-                                      width: cols, height: rows,
-                                      bitsPerComponent: 8, bytesPerRow: cols * 4,
-                                      space: space, bitmapInfo: info) else { return }
+            guard
+                let ctx = CGContext(
+                    data: buf.baseAddress,
+                    width: cols, height: rows,
+                    bitsPerComponent: 8, bytesPerRow: cols * 4,
+                    space: space, bitmapInfo: info)
+            else { return }
             ctx.interpolationQuality = .high
             ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
             ctx.fill(CGRect(x: 0, y: 0, width: cols, height: rows))
@@ -86,9 +92,12 @@ final class FlowField {
             let scale = max(CGFloat(cols) / iw, CGFloat(rows) * a / ih)
             let dw = iw * scale
             let dh = ih * scale / a
-            ctx.draw(image, in: CGRect(x: (CGFloat(cols) - dw) / 2,
-                                       y: (CGFloat(rows) - dh) / 2,
-                                       width: dw, height: dh))
+            ctx.draw(
+                image,
+                in: CGRect(
+                    x: (CGFloat(cols) - dw) / 2,
+                    y: (CGFloat(rows) - dh) / 2,
+                    width: dw, height: dh))
         }
 
         // A bitmap context's memory row 0 is the top of the drawn image, which
@@ -143,8 +152,18 @@ final class FlowField {
 
         // Normalise edge energy against a high percentile so the field behaves
         // the same for a soft dawn photo and a high-contrast one.
+        // The tensor's diagonal holds variances, so mathematically these cannot
+        // be negative — but a sliding-window box blur accumulates rounding error,
+        // and over a flat field punctuated by one sharp edge the running sum
+        // drifts a little below zero. Taking a square root of that yields NaN,
+        // which then propagates into every flow vector and takes the whole frame
+        // with it. Clamping here is cheaper than making the blur exact.
         var energy = [Float](repeating: 0, count: n)
-        for i in 0..<n { energy[i] = (tE[i] + tG[i]).squareRoot() }
+        for i in 0..<n {
+            tE[i] = max(tE[i], 0)
+            tG[i] = max(tG[i], 0)
+            energy[i] = (tE[i] + tG[i]).squareRoot()
+        }
         let reference = percentile(energy, 0.90)
         let energyScale = reference > 1e-6 ? 1 / reference : 0
 
@@ -197,9 +216,10 @@ final class FlowField {
                 let coh = min(max(anisotropy * strength, 0), 1)
 
                 let label = Int(regions.labels[i])
-                let (cxw, cyw) = Noise.curl(Float(x), Float(y) * aspect,
-                                            scale: windScale * regionSwirl[label],
-                                            seed: seed &+ UInt32(label) &* 7919)
+                let (cxw, cyw) = Noise.curl(
+                    Float(x), Float(y) * aspect,
+                    scale: windScale * regionSwirl[label],
+                    seed: seed &+ UInt32(label) &* 7919)
                 // Half the region's own prevailing direction, half its own
                 // turbulence: enough shared direction to read as one passage,
                 // enough turbulence not to look combed.
@@ -255,7 +275,9 @@ final class FlowField {
     /// Bilinear flow lookup, with a slow breathing perturbation so the field is
     /// never quite static.
     @inline(__always)
-    func flow(atX x: Float, y: Float, time: Float, swirl: Float, seed: UInt32) -> (Float, Float, Float) {
+    func flow(
+        atX x: Float, y: Float, time: Float, swirl: Float, seed: UInt32
+    ) -> (Float, Float, Float) {
         let cx = min(max(x, 0), Float(cols - 1) - 0.001)
         let cy = min(max(y, 0), Float(rows - 1) - 0.001)
         let x0 = Int(cx), y0 = Int(cy)
@@ -269,11 +291,13 @@ final class FlowField {
 
         var vx = dirX[i00] * w00 + dirX[i10] * w10 + dirX[i01] * w01 + dirX[i11] * w11
         var vy = dirY[i00] * w00 + dirY[i10] * w10 + dirY[i01] * w01 + dirY[i11] * w11
-        let coh = coherence[i00] * w00 + coherence[i10] * w10
+        let coh =
+            coherence[i00] * w00 + coherence[i10] * w10
             + coherence[i01] * w01 + coherence[i11] * w11
 
         if swirl > 0 {
-            let a = (Noise.value3(cx * 0.035, cy * aspect * 0.035, time * 0.09, seed &+ 7717) - 0.5)
+            let a =
+                (Noise.value3(cx * 0.035, cy * aspect * 0.035, time * 0.09, seed &+ 7717) - 0.5)
                 * swirl * (1.15 - coh)
             let s = sin(a), c = cos(a)
             let rx = vx * c - vy * s
